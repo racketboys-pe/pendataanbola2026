@@ -4,7 +4,7 @@ import {
   FileSpreadsheet, ShieldAlert, CheckCircle, RefreshCw, Trash2, 
   Download, Search, Filter, Database, Link, AlertCircle, ArrowUpRight, 
   Activity, Users, UserCheck, Calendar, Sparkles, Check, LogOut, ArrowRight,
-  Lock, Key, ShieldCheck, Copy, Code
+  Lock, Key, ShieldCheck, Copy, Code, Trophy, Image, Upload
 } from 'lucide-react';
 import { StudentRegistration, GoogleSheetConfig } from '../types';
 import { appendRegistrationToAppsScript, getAppsScriptCodeTemplate, validateAppsScriptUrl } from '../lib/sheets';
@@ -18,6 +18,8 @@ interface AdminDashboardProps {
   syncSingleRegistration: (reg: StudentRegistration) => Promise<boolean>;
   waLink: string;
   onUpdateWaLink: (link: string) => void;
+  logoUrl: string;
+  onUpdateLogo: (logo: string) => void;
 }
 
 export default function AdminDashboard({
@@ -28,7 +30,9 @@ export default function AdminDashboard({
   onClearData,
   syncSingleRegistration,
   waLink,
-  onUpdateWaLink
+  onUpdateWaLink,
+  logoUrl,
+  onUpdateLogo
 }: AdminDashboardProps) {
   // Local Session Admin Auth
   const [isLocalAuthorized, setIsLocalAuthorized] = useState(() => {
@@ -162,6 +166,34 @@ export default function AdminDashboard({
       alert('Koneksi dikonfirmasi! Anda siap melakukan pendaftaran dan sinkronisasi.');
     } finally {
       setIsTestingConnection(false);
+    }
+  };
+
+  // Upload Logo handlers
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) { // 2MB limit to prevent storage quota exhaustion
+      alert('Ukuran file terlalu besar! Silakan gunakan logo dengan ukuran di bawah 2 MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      if (base64) {
+        onUpdateLogo(base64);
+        setSyncLogs(prev => [...prev, '✓ Logo kustom berhasil diunggah dan diterapkan sebagai Logo & Favicon.']);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleResetLogo = () => {
+    if (window.confirm('Apakah Anda yakin ingin menghapus logo kustom dan kembali ke logo Piala bawaan?')) {
+      onUpdateLogo('');
+      setSyncLogs(prev => [...prev, 'Logo kustom dihapus. Kembali menggunakan icon Piala bawaan.']);
     }
   };
 
@@ -636,6 +668,61 @@ export default function AdminDashboard({
                 />
                 <div className="px-3 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded-lg flex items-center justify-center border border-emerald-100 uppercase shrink-0">
                   Aktif
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Custom Logo Upload Configuration Card */}
+          <div className="border-t border-gray-100 pt-6 mt-6 space-y-4">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                <Image className="w-4 h-4" />
+              </div>
+              <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider">
+                Pengaturan Logo Aplikasi &amp; Favicon
+              </h4>
+            </div>
+            
+            <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl space-y-4 animate-fade-in">
+              <p className="text-[11px] text-gray-500 leading-relaxed font-semibold">
+                Unggah logo kustom sekolah atau tim Anda untuk menggantikan logo Piala bawaan di Header. Favicon tab browser akan otomatis berubah mengikuti logo ini.
+              </p>
+              
+              <div className="flex flex-col sm:flex-row items-center gap-4 bg-white p-4 rounded-xl border border-slate-150">
+                {/* Logo Preview */}
+                <div className="w-16 h-16 bg-slate-50 border border-slate-200 rounded-full flex items-center justify-center shadow-inner shrink-0 overflow-hidden relative group">
+                  {logoUrl ? (
+                    <img src={logoUrl} alt="Custom Logo Preview" className="w-full h-full object-cover" />
+                  ) : (
+                    <Trophy className="w-8 h-8 text-emerald-700" />
+                  )}
+                </div>
+
+                <div className="flex-1 space-y-2 text-center sm:text-left w-full">
+                  <div className="flex flex-col sm:flex-row gap-2 justify-center sm:justify-start">
+                    <label className="flex items-center justify-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-sm uppercase tracking-wider">
+                      <Upload className="w-3.5 h-3.5" />
+                      Pilih Logo Baru
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        onChange={handleLogoUpload} 
+                        className="hidden" 
+                      />
+                    </label>
+
+                    {logoUrl && (
+                      <button
+                        type="button"
+                        onClick={handleResetLogo}
+                        className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-150 rounded-xl text-xs font-bold transition-colors uppercase tracking-wider cursor-pointer"
+                      >
+                        Reset Bawaan
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-gray-400 font-semibold">Format didukung: PNG, JPG, GIF, SVG. Maks 2 MB.</p>
                 </div>
               </div>
             </div>

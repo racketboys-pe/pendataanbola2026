@@ -6,9 +6,10 @@ interface HeaderProps {
   setTab: (tab: 'form' | 'admin') => void;
   isSheetConnected: boolean;
   spreadsheetUrl?: string;
+  logoUrl?: string;
 }
 
-export default function Header({ currentTab, setTab, isSheetConnected, spreadsheetUrl }: HeaderProps) {
+export default function Header({ currentTab, setTab, isSheetConnected, spreadsheetUrl, logoUrl }: HeaderProps) {
   return (
     <header className="relative overflow-hidden bg-emerald-600 text-white shadow-lg border-b-4 border-yellow-400">
       {/* Decorative background soccer pattern */}
@@ -22,8 +23,12 @@ export default function Header({ currentTab, setTab, isSheetConnected, spreadshe
           
           {/* Logo & School Title */}
           <div className="flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left">
-            <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-inner shrink-0 ring-4 ring-emerald-500/30">
-              <Trophy className="w-10 h-10 text-emerald-700" />
+            <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-inner shrink-0 ring-4 ring-emerald-500/30 overflow-hidden">
+              {logoUrl ? (
+                <img src={logoUrl} alt="School Logo" className="w-full h-full object-cover" />
+              ) : (
+                <Trophy className="w-10 h-10 text-emerald-700" />
+              )}
             </div>
             <div>
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
@@ -70,8 +75,8 @@ export default function Header({ currentTab, setTab, isSheetConnected, spreadshe
               Operator (Admin)
             </button>
 
-            {/* Google Sheets Connection Badge */}
-            {isSheetConnected && spreadsheetUrl && (
+            {/* Google Sheets Connection Badge - Only visible on Admin Tab */}
+            {currentTab === 'admin' && isSheetConnected && spreadsheetUrl && (
               <a
                 href={spreadsheetUrl}
                 target="_blank"

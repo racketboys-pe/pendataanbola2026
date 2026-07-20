@@ -11,6 +11,7 @@ export default function App() {
   const [registrations, setRegistrations] = useState<StudentRegistration[]>([]);
   const [sheetConfig, setSheetConfig] = useState<GoogleSheetConfig | null>(null);
   const [waLink, setWaLink] = useState<string>('https://chat.whatsapp.com/CgWJzVBrQ7vAZu1BSJHS8l');
+  const [logoUrl, setLogoUrl] = useState<string>('');
 
   // 1. Initial Load from LocalStorage
   useEffect(() => {
@@ -38,7 +39,39 @@ export default function App() {
     } else {
       setWaLink('https://chat.whatsapp.com/CgWJzVBrQ7vAZu1BSJHS8l');
     }
+
+    const savedLogo = localStorage.getItem('sdn_ulujami_logo');
+    if (savedLogo) {
+      setLogoUrl(savedLogo);
+    }
   }, []);
+
+  // Favicon update effect
+  useEffect(() => {
+    if (logoUrl) {
+      let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'icon';
+        document.getElementsByTagName('head')[0].appendChild(link);
+      }
+      link.href = logoUrl;
+    } else {
+      const link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+      if (link) {
+        link.removeAttribute('href');
+      }
+    }
+  }, [logoUrl]);
+
+  // logo persistence
+  useEffect(() => {
+    if (logoUrl) {
+      localStorage.setItem('sdn_ulujami_logo', logoUrl);
+    } else {
+      localStorage.removeItem('sdn_ulujami_logo');
+    }
+  }, [logoUrl]);
 
   // 2. Persist configurations whenever they change
   useEffect(() => {
@@ -133,31 +166,13 @@ export default function App() {
         setTab={setTab} 
         isSheetConnected={!!sheetConfig}
         spreadsheetUrl={sheetConfig?.spreadsheetUrl}
+        logoUrl={logoUrl}
       />
 
       {/* Main Container */}
       <main className="flex-1 bg-[radial-gradient(#d1fae5_1px,transparent_1px)] [background-size:16px_16px]">
         {tab === 'form' ? (
           <div className="space-y-6">
-            {/* Direct Sync alert banner if connected */}
-            {sheetConfig && (
-              <div className="max-w-5xl mx-auto px-4 mt-6">
-                <div className="flex items-center justify-between gap-3 bg-white border-2 border-emerald-100 p-4 rounded-2xl text-emerald-800 text-xs font-bold shadow-sm animate-fade-in">
-                  <div className="flex items-center gap-2">
-                    <div className="p-1.5 bg-emerald-100 rounded-lg text-emerald-600 animate-pulse">
-                      <FileSpreadsheet className="w-4 h-4" />
-                    </div>
-                    <span>
-                      Google Spreadsheet Aktif: Data pendaftaran akan otomatis disinkronkan langsung ke cloud.
-                    </span>
-                  </div>
-                  <span className="hidden sm:inline-block px-2.5 py-0.5 bg-emerald-600 text-white rounded-full text-[10px] font-black uppercase tracking-wider">
-                    Connected
-                  </span>
-                </div>
-              </div>
-            )}
-            
             <RegistrationForm onRegister={handleRegister} waLink={waLink} />
           </div>
         ) : (
@@ -173,6 +188,8 @@ export default function App() {
               setWaLink(link);
               localStorage.setItem('sdn_ulujami_wa_link', link);
             }}
+            logoUrl={logoUrl}
+            onUpdateLogo={setLogoUrl}
           />
         )}
       </main>
