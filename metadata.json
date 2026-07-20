@@ -1,0 +1,6 @@
+{
+  "name": "Pendaftaran & Daftar Ulang Sepakbola SDN Ulujami 06 Pagi",
+  "description": "Aplikasi pendaftaran dan daftar ulang peserta ekstrakurikuler Sepakbola SDN Ulujami 06 Pagi dengan integrasi langsung ke Google Spreadsheet.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
