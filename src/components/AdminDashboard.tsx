@@ -49,6 +49,8 @@ export default function AdminDashboard({
   const [user, setUser] = useState<any>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(false);
+  const [googleAuthError, setGoogleAuthError] = useState<string | null>(null);
+  const [copiedDomain, setCopiedDomain] = useState(false);
   const [isSyncingAll, setIsSyncingAll] = useState(false);
   const [syncLogs, setSyncLogs] = useState<string[]>([]);
   const [customSpreadsheetId, setCustomSpreadsheetId] = useState('');
@@ -114,17 +116,21 @@ export default function AdminDashboard({
   // Google Sign In
   const handleGoogleSignIn = async () => {
     setIsLoadingAuth(true);
+    setGoogleAuthError(null);
     setSyncLogs(prev => [...prev, 'Memulai login dengan Google...']);
     try {
       const res = await googleSignIn();
       if (res) {
         setUser(res.user);
         setAccessToken(res.accessToken);
+        setGoogleAuthError(null);
         setSyncLogs(prev => [...prev, `Berhasil login sebagai: ${res.user.displayName || res.user.email}`]);
       }
     } catch (err: any) {
       console.error(err);
-      setSyncLogs(prev => [...prev, `Gagal login: ${err.message || 'Error tidak diketahui'}`]);
+      const errMsg = err.message || 'Error tidak diketahui';
+      setGoogleAuthError(errMsg);
+      setSyncLogs(prev => [...prev, `Gagal login: ${errMsg}`]);
     } finally {
       setIsLoadingAuth(false);
     }
@@ -527,9 +533,63 @@ export default function AdminDashboard({
                     <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
                     <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
                   </svg>
-                  <span>Sign in dengan Google Operator</span>
+                  <span>{isLoadingAuth ? 'Menghubungkan...' : 'Sign in dengan Google Operator'}</span>
                 </button>
               </div>
+
+              {/* Error Alert with details */}
+              {googleAuthError && (
+                <div className="p-4 bg-red-50 border-2 border-red-100 rounded-2xl space-y-3 animate-fade-in text-red-900">
+                  <div className="flex items-start gap-2">
+                    <ShieldAlert className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="text-xs font-black uppercase tracking-wider text-red-700">Gagal Melakukan Google Sign-In</h4>
+                      <p className="text-[11px] font-semibold leading-relaxed mt-1 text-red-800">
+                        {googleAuthError}
+                      </p>
+                    </div>
+                  </div>
+
+                  {(googleAuthError.includes('unauthorized-domain') || googleAuthError.includes('auth/unauthorized-domain') || true) && (
+                    <div className="bg-white p-4.5 rounded-xl border border-red-100 text-xs text-gray-700 space-y-3 font-medium">
+                      <p className="text-amber-700 font-bold uppercase text-[10px] tracking-wide flex items-center gap-1">
+                        ⚠️ Solusi: Daftarkan Domain di Firebase Console
+                      </p>
+                      <p className="text-[11px] leading-relaxed text-gray-600">
+                        Firebase Authentication memblokir login Google karena domain website preview ini belum terdaftar di daftar domain resmi Firebase Anda.
+                      </p>
+                      
+                      <div className="p-2.5 bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-between gap-2">
+                        <span className="font-mono text-[10px] select-all font-bold text-gray-800 break-all">
+                          {window.location.hostname}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(window.location.hostname);
+                            setCopiedDomain(true);
+                            setTimeout(() => setCopiedDomain(false), 2000);
+                          }}
+                          className="px-2 py-1 bg-emerald-600 text-white rounded text-[10px] font-bold uppercase tracking-wider shrink-0 cursor-pointer hover:bg-emerald-700 transition-colors"
+                        >
+                          {copiedDomain ? 'Tersalin' : 'Salin'}
+                        </button>
+                      </div>
+
+                      <div className="space-y-1.5 text-[11px] text-gray-600">
+                        <p className="font-bold text-gray-800">Langkah pendaftaran sangat mudah:</p>
+                        <ol className="list-decimal pl-4.5 space-y-1">
+                          <li>Buka <a href="https://console.firebase.google.com/" target="_blank" rel="noreferrer" className="text-emerald-600 hover:underline font-bold">Firebase Console</a> Anda.</li>
+                          <li>Masuk ke menu <span className="font-bold text-gray-800">Authentication</span> di bilah kiri, lalu klik tab <span className="font-bold text-gray-800">Settings</span>.</li>
+                          <li>Pilih sub-menu <span className="font-bold text-gray-800">Authorized domains</span> (Domain yang diotorisasi).</li>
+                          <li>Klik <span className="font-bold text-gray-800">Add domain</span>, tempelkan domain yang disalin di atas, klik <span className="font-bold text-gray-800">Add</span>.</li>
+                          <li>Selesai! Silakan refresh halaman dan coba klik Sign-in dengan Google lagi.</li>
+                        </ol>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             /* Logged In Status */
