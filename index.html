@@ -1,6 +1,27 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <script>
+      // Redefine window.fetch to be writable and prevent errors when environmental scripts/mocks try to assign to it.
+      (function() {
+        try {
+          var originalFetch = window.fetch;
+          var fetchValue = originalFetch;
+          Object.defineProperty(window, 'fetch', {
+            configurable: true,
+            enumerable: true,
+            get: function() {
+              return fetchValue;
+            },
+            set: function(val) {
+              fetchValue = val;
+            }
+          });
+        } catch (e) {
+          console.warn('Failed to redefine window.fetch:', e);
+        }
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>My Google AI Studio App</title>

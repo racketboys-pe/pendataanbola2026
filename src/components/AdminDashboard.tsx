@@ -553,10 +553,11 @@ export default function AdminDashboard({
                   {(googleAuthError.includes('unauthorized-domain') || googleAuthError.includes('auth/unauthorized-domain') || true) && (
                     <div className="bg-white p-4.5 rounded-xl border border-red-100 text-xs text-gray-700 space-y-3 font-medium">
                       <p className="text-amber-700 font-bold uppercase text-[10px] tracking-wide flex items-center gap-1">
-                        ⚠️ Solusi: Daftarkan Domain di Firebase Console
+                        ⚠️ Solusi: Daftarkan Domain di Firebase Console Anda
                       </p>
                       <p className="text-[11px] leading-relaxed text-gray-600">
-                        Firebase Authentication memblokir login Google karena domain website preview ini belum terdaftar di daftar domain resmi Firebase Anda.
+                        Firebase Project ID aplikasi Anda saat ini adalah: <strong className="text-emerald-700 font-bold">pivotal-spirit-hln7n</strong>. 
+                        Projek ini dibuat otomatis untuk aplikasi Anda. Anda dapat mengelolanya dengan login ke Firebase Console menggunakan email Google yang sama dengan akun AI Studio Anda (<strong className="text-slate-800 font-bold">oryzanurracman17@gmail.com</strong>).
                       </p>
                       
                       <div className="p-2.5 bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-between gap-2">
@@ -576,14 +577,18 @@ export default function AdminDashboard({
                         </button>
                       </div>
 
-                      <div className="space-y-1.5 text-[11px] text-gray-600">
-                        <p className="font-bold text-gray-800">Langkah pendaftaran sangat mudah:</p>
-                        <ol className="list-decimal pl-4.5 space-y-1">
-                          <li>Buka <a href="https://console.firebase.google.com/" target="_blank" rel="noreferrer" className="text-emerald-600 hover:underline font-bold">Firebase Console</a> Anda.</li>
-                          <li>Masuk ke menu <span className="font-bold text-gray-800">Authentication</span> di bilah kiri, lalu klik tab <span className="font-bold text-gray-800">Settings</span>.</li>
-                          <li>Pilih sub-menu <span className="font-bold text-gray-800">Authorized domains</span> (Domain yang diotorisasi).</li>
-                          <li>Klik <span className="font-bold text-gray-800">Add domain</span>, tempelkan domain yang disalin di atas, klik <span className="font-bold text-gray-800">Add</span>.</li>
-                          <li>Selesai! Silakan refresh halaman dan coba klik Sign-in dengan Google lagi.</li>
+                      <div className="space-y-2 text-[11px] text-gray-600">
+                        <p className="font-bold text-gray-800">Langkah mendaftarkan domain:</p>
+                        <ol className="list-decimal pl-4.5 space-y-1.5">
+                          <li>
+                            Buka tautan langsung ini: <a href="https://console.firebase.google.com/project/pivotal-spirit-hln7n/authentication/settings" target="_blank" rel="noreferrer" className="text-emerald-600 hover:underline font-bold inline-flex items-center gap-0.5">
+                              Firebase Auth Settings <ArrowUpRight className="w-3 h-3" />
+                            </a>
+                          </li>
+                          <li>Pastikan Anda login di Firebase menggunakan akun Google <strong className="text-slate-800 font-bold">oryzanurracman17@gmail.com</strong>.</li>
+                          <li>Di halaman tersebut, pilih menu <span className="font-bold text-gray-800">Authorized domains</span> (Domain yang diotorisasi).</li>
+                          <li>Klik tombol <span className="font-bold text-gray-800">Add domain</span>, tempel domain di atas (yang telah disalin), lalu klik <span className="font-bold text-gray-800">Add</span>.</li>
+                          <li>Setelah ditambahkan, silakan muat ulang halaman ini (refresh) dan coba klik tombol <strong>Sign in dengan Google</strong> kembali!</li>
                         </ol>
                       </div>
                     </div>
