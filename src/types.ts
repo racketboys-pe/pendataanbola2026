@@ -17,7 +17,6 @@ export interface StudentRegistration {
 }
 
 export interface GoogleSheetConfig {
-  spreadsheetId: string;
-  spreadsheetUrl: string;
-  title: string;
+  appsScriptUrl: string;
+  spreadsheetUrl?: string; // Optional Spreadsheet URL for opening in new tab
 }

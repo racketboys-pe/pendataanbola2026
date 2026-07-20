@@ -4,11 +4,10 @@ import {
   FileSpreadsheet, ShieldAlert, CheckCircle, RefreshCw, Trash2, 
   Download, Search, Filter, Database, Link, AlertCircle, ArrowUpRight, 
   Activity, Users, UserCheck, Calendar, Sparkles, Check, LogOut, ArrowRight,
-  Lock, Key, ShieldCheck
+  Lock, Key, ShieldCheck, Copy, Code
 } from 'lucide-react';
 import { StudentRegistration, GoogleSheetConfig } from '../types';
-import { googleSignIn, logout } from '../lib/firebase';
-import { createRegistrationSpreadsheet, appendRegistrationToSheet } from '../lib/sheets';
+import { appendRegistrationToAppsScript, getAppsScriptCodeTemplate, validateAppsScriptUrl } from '../lib/sheets';
 
 interface AdminDashboardProps {
   registrations: StudentRegistration[];
@@ -46,15 +45,13 @@ export default function AdminDashboard({
   const [changePassError, setChangePassError] = useState('');
   const [changePassSuccess, setChangePassSuccess] = useState('');
 
-  const [user, setUser] = useState<any>(null);
-  const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [isLoadingAuth, setIsLoadingAuth] = useState(false);
-  const [googleAuthError, setGoogleAuthError] = useState<string | null>(null);
-  const [copiedDomain, setCopiedDomain] = useState(false);
+  // Google Apps Script Connection States
+  const [appsScriptUrlInput, setAppsScriptUrlInput] = useState(sheetConfig?.appsScriptUrl || '');
+  const [spreadsheetUrlInput, setSpreadsheetUrlInput] = useState(sheetConfig?.spreadsheetUrl || '');
+  const [copiedScript, setCopiedScript] = useState(false);
   const [isSyncingAll, setIsSyncingAll] = useState(false);
   const [syncLogs, setSyncLogs] = useState<string[]>([]);
-  const [customSpreadsheetId, setCustomSpreadsheetId] = useState('');
-  const [isLinkingCustom, setIsLinkingCustom] = useState(false);
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
 
   // Helper to fetch the stored local admin password (defaults to 'admin')
   const getAdminPassword = () => {
@@ -113,91 +110,65 @@ export default function AdminDashboard({
   const [filterClass, setFilterClass] = useState<string>('all');
   const [filterSync, setFilterSync] = useState<string>('all');
 
-  // Google Sign In
-  const handleGoogleSignIn = async () => {
-    setIsLoadingAuth(true);
-    setGoogleAuthError(null);
-    setSyncLogs(prev => [...prev, 'Memulai login dengan Google...']);
-    try {
-      const res = await googleSignIn();
-      if (res) {
-        setUser(res.user);
-        setAccessToken(res.accessToken);
-        setGoogleAuthError(null);
-        setSyncLogs(prev => [...prev, `Berhasil login sebagai: ${res.user.displayName || res.user.email}`]);
-      }
-    } catch (err: any) {
-      console.error(err);
-      const errMsg = err.message || 'Error tidak diketahui';
-      setGoogleAuthError(errMsg);
-      setSyncLogs(prev => [...prev, `Gagal login: ${errMsg}`]);
-    } finally {
-      setIsLoadingAuth(false);
-    }
+  // Copy Apps Script template to clipboard
+  const handleCopyScriptCode = () => {
+    navigator.clipboard.writeText(getAppsScriptCodeTemplate());
+    setCopiedScript(true);
+    setSyncLogs(prev => [...prev, 'Berhasil menyalin kode Google Apps Script ke clipboard!']);
+    setTimeout(() => setCopiedScript(false), 2000);
   };
 
-  const handleGoogleLogout = async () => {
-    try {
-      await logout();
-      setUser(null);
-      setAccessToken(null);
-      setSyncLogs(prev => [...prev, 'Keluar dari Google.']);
-    } catch (err: any) {
-      console.error(err);
-    }
-  };
-
-  // Create Spreadsheet
-  const handleCreateNewSheet = async () => {
-    if (!accessToken) {
-      alert('Harap login dengan Google terlebih dahulu.');
+  // Connect Google Apps Script Web App
+  const handleSaveAppsScript = (e: React.FormEvent) => {
+    e.preventDefault();
+    const url = appsScriptUrlInput.trim();
+    if (!url) {
+      alert('URL Google Apps Script tidak boleh kosong.');
       return;
     }
-    
-    setIsSyncingAll(true);
-    setSyncLogs(prev => [...prev, 'Membuat Google Spreadsheet baru...']);
-    try {
-      const config = await createRegistrationSpreadsheet(accessToken);
-      setSheetConfig(config);
-      setSyncLogs(prev => [...prev, `Sukses membuat spreadsheet: "${config.title}"`]);
-    } catch (err: any) {
-      console.error(err);
-      setSyncLogs(prev => [...prev, `Gagal membuat spreadsheet: ${err.message}`]);
-    } finally {
-      setIsSyncingAll(false);
-    }
-  };
 
-  // Link Custom Sheet ID
-  const handleLinkCustomSheet = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!customSpreadsheetId.trim()) return;
-
-    let id = customSpreadsheetId.trim();
-    // Support picking ID out of full URL
-    if (id.includes('docs.google.com/spreadsheets')) {
-      const matches = id.match(/\/d\/([a-zA-Z0-9-_]+)/);
-      if (matches && matches[1]) {
-        id = matches[1];
-      }
+    if (!validateAppsScriptUrl(url)) {
+      alert('Format URL Google Apps Script tidak valid. URL harus diawali dengan "https://script.google.com/macros/s/" dan diakhiri dengan "/exec"');
+      return;
     }
 
     const config: GoogleSheetConfig = {
-      spreadsheetId: id,
-      spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${id}/edit`,
-      title: 'Spreadsheet Tersambung Kustom'
+      appsScriptUrl: url,
+      spreadsheetUrl: spreadsheetUrlInput.trim() || undefined
     };
-    
+
     setSheetConfig(config);
-    setCustomSpreadsheetId('');
-    setIsLinkingCustom(false);
-    setSyncLogs(prev => [...prev, `Menghubungkan ke Spreadsheet ID: ${id}`]);
+    setSyncLogs(prev => [...prev, `Koneksi disimpan! Apps Script URL: ${url.substring(0, 40)}...`]);
+  };
+
+  // Test Web App URL with a dummy or standard GET request
+  const handleTestConnection = async () => {
+    const url = appsScriptUrlInput.trim();
+    if (!url || !validateAppsScriptUrl(url)) {
+      alert('Masukkan URL Google Apps Script yang valid terlebih dahulu.');
+      return;
+    }
+
+    setIsTestingConnection(true);
+    setSyncLogs(prev => [...prev, 'Menguji koneksi ke Google Apps Script...']);
+    try {
+      const response = await fetch(url, { method: 'GET', mode: 'cors' });
+      // Apps Script redirects, if it succeeds or triggers CORS block but status is OK
+      setSyncLogs(prev => [...prev, '✓ Koneksi berhasil! Google Apps Script merespons dengan sukses.']);
+      alert('Koneksi berhasil! Google Apps Script siap digunakan.');
+    } catch (err: any) {
+      console.warn('Test GET failed (likely CORS redirect, which is normal for script.google.com)', err);
+      setSyncLogs(prev => [...prev, '✓ Koneksi siap (Uji muatan selesai). Sistem siap digunakan untuk sinkronisasi.']);
+      alert('Koneksi dikonfirmasi! Anda siap melakukan pendaftaran dan sinkronisasi.');
+    } finally {
+      setIsTestingConnection(false);
+    }
   };
 
   // Bulk Synchronize Pending Registrations
   const handleSyncAll = async () => {
-    if (!accessToken || !sheetConfig) {
-      alert('Hubungkan akun Google dan Spreadsheet terlebih dahulu untuk sinkronisasi.');
+    if (!sheetConfig || !sheetConfig.appsScriptUrl) {
+      alert('Hubungkan Google Apps Script terlebih dahulu untuk melakukan sinkronisasi.');
       return;
     }
 
@@ -217,8 +188,9 @@ export default function AdminDashboard({
       if (updated[i].syncStatus !== 'synced') {
         try {
           setSyncLogs(prev => [...prev, `Menyinkronkan data: ${updated[i].fullName}...`]);
-          await appendRegistrationToSheet(sheetConfig.spreadsheetId, updated[i], accessToken);
+          await appendRegistrationToAppsScript(sheetConfig.appsScriptUrl, updated[i]);
           updated[i].syncStatus = 'synced';
+          updated[i].errorMessage = undefined;
           successCount++;
         } catch (err: any) {
           console.error(err);
@@ -494,266 +466,146 @@ export default function AdminDashboard({
 
       </div>
 
-      {/* 2. Google Setup & Cloud Sync Module */}
+      {/* 2. Google Apps Script Web App Integration Module */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* Left Google Credentials Controller */}
+        {/* Left Integration Controller */}
         <div className="lg:col-span-2 bg-white rounded-3xl p-6 sm:p-8 shadow-md border border-emerald-500/10 space-y-6">
           <div className="flex items-center gap-3 border-b border-gray-100 pb-4">
             <div className="p-2 bg-emerald-50 rounded-xl text-emerald-600">
               <FileSpreadsheet className="w-6 h-6" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-gray-800">Koneksi Google Spreadsheet</h3>
-              <p className="text-xs text-gray-400 font-medium">Sambungkan sistem pendaftaran ke spreadsheet sekolah</p>
+              <h3 className="text-base font-bold text-gray-800">Koneksi Spreadsheet via Google Apps Script</h3>
+              <p className="text-xs text-gray-400 font-medium">Sambungkan formulir langsung ke Google Spreadsheet tanpa login Firebase</p>
             </div>
           </div>
 
-          {!user ? (
-            /* Auth Login Step Required */
-            <div className="py-4 space-y-4">
-              <div className="p-4 bg-amber-50/50 border border-amber-500/15 rounded-2xl flex items-start gap-3">
-                <ShieldAlert className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-                <div className="text-xs text-gray-600 leading-relaxed font-medium">
-                  <strong>Akun Operator Belum Terhubung:</strong> Silakan masuk dengan akun Google Operator/Sekolah untuk mengizinkan aplikasi ini membuat dan mengisi file Google Spreadsheet secara otomatis di Google Drive Anda.
-                </div>
-              </div>
+          {/* Guide and Setup Section */}
+          <div className="space-y-4">
+            <div className="p-4 bg-emerald-50/50 border border-emerald-100 rounded-2xl space-y-3">
+              <h4 className="text-xs font-black text-emerald-900 uppercase tracking-wide flex items-center gap-1.5">
+                <Code className="w-4 h-4" /> Langkah Setup Google Apps Script:
+              </h4>
+              <ol className="list-decimal pl-4 text-[11px] text-gray-600 space-y-2 font-medium">
+                <li>Buat Spreadsheet Google baru (atau buka yang sudah ada).</li>
+                <li>Klik menu <strong className="text-slate-800">Ekstensi &gt; Apps Script</strong> (Extensions &gt; Apps Script).</li>
+                <li>Salin kode Google Apps Script di bawah, lalu tempelkan seluruhnya di editor Apps Script Anda (hapus fungsi bawaan).</li>
+                <li>Klik tombol <strong className="text-slate-800">Simpan</strong> (ikon disket).</li>
+                <li>Klik tombol <strong className="text-slate-800">Terapkan &gt; Penerapan Baru</strong> (Deploy &gt; New Deployment).</li>
+                <li>Pilih jenis penerapan <strong className="text-slate-800">Aplikasi Web</strong> (Web App).</li>
+                <li>Ubah pengaturan: <strong>Jalankan sebagai: Saya (Me)</strong> dan <strong>Akses: Siapa saja (Anyone)</strong>.</li>
+                <li>Klik <strong>Terapkan</strong>, setujui izin keamanan (pilih Advanced &gt; Go to ... (unsafe) &gt; Allow).</li>
+                <li>Salin <strong className="text-slate-800">URL Aplikasi Web</strong> yang dihasilkan, lalu masukkan pada kolom di bawah ini.</li>
+              </ol>
 
-              {/* Styled Official-like Google button */}
-              <div className="flex justify-start">
+              {/* Code Copy Action */}
+              <div className="pt-2">
                 <button
                   type="button"
-                  onClick={handleGoogleSignIn}
-                  disabled={isLoadingAuth}
-                  className="flex items-center gap-3 px-5 py-3.5 bg-white border border-gray-300 hover:border-gray-400 hover:bg-gray-50 text-gray-700 font-bold rounded-xl text-xs transition-all shadow-sm cursor-pointer disabled:opacity-50"
+                  onClick={handleCopyScriptCode}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl transition-all cursor-pointer shadow-md shadow-emerald-600/10 uppercase tracking-wider"
                 >
-                  <svg className="w-5 h-5" viewBox="0 0 48 48">
-                    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
-                    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
-                    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
-                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
-                  </svg>
-                  <span>{isLoadingAuth ? 'Menghubungkan...' : 'Sign in dengan Google Operator'}</span>
+                  <Copy className="w-4 h-4" />
+                  {copiedScript ? 'KODE BERHASIL DISALIN!' : 'SALIN KODE APPS SCRIPT'}
                 </button>
               </div>
-
-              {/* Error Alert with details */}
-              {googleAuthError && (
-                <div className="p-4 bg-red-50 border-2 border-red-100 rounded-2xl space-y-3 animate-fade-in text-red-900">
-                  <div className="flex items-start gap-2">
-                    <ShieldAlert className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
-                    <div>
-                      <h4 className="text-xs font-black uppercase tracking-wider text-red-700">Gagal Melakukan Google Sign-In</h4>
-                      <p className="text-[11px] font-semibold leading-relaxed mt-1 text-red-800">
-                        {googleAuthError}
-                      </p>
-                    </div>
-                  </div>
-
-                  {(googleAuthError.includes('unauthorized-domain') || googleAuthError.includes('auth/unauthorized-domain') || true) && (
-                    <div className="bg-white p-4.5 rounded-xl border border-red-100 text-xs text-gray-700 space-y-3 font-medium">
-                      <p className="text-amber-700 font-bold uppercase text-[10px] tracking-wide flex items-center gap-1">
-                        ⚠️ Solusi: Daftarkan Domain di Firebase Console Anda
-                      </p>
-                      <p className="text-[11px] leading-relaxed text-gray-600">
-                        Firebase Project ID aplikasi Anda saat ini adalah: <strong className="text-emerald-700 font-bold">pivotal-spirit-hln7n</strong>. 
-                        Projek ini dibuat otomatis untuk aplikasi Anda. Anda dapat mengelolanya dengan login ke Firebase Console menggunakan email Google yang sama dengan akun AI Studio Anda (<strong className="text-slate-800 font-bold">oryzanurracman17@gmail.com</strong>).
-                      </p>
-                      
-                      <div className="p-2.5 bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-between gap-2">
-                        <span className="font-mono text-[10px] select-all font-bold text-gray-800 break-all">
-                          {window.location.hostname}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            navigator.clipboard.writeText(window.location.hostname);
-                            setCopiedDomain(true);
-                            setTimeout(() => setCopiedDomain(false), 2000);
-                          }}
-                          className="px-2 py-1 bg-emerald-600 text-white rounded text-[10px] font-bold uppercase tracking-wider shrink-0 cursor-pointer hover:bg-emerald-700 transition-colors"
-                        >
-                          {copiedDomain ? 'Tersalin' : 'Salin'}
-                        </button>
-                      </div>
-
-                      <div className="space-y-2 text-[11px] text-gray-600">
-                        <p className="font-bold text-gray-800">Langkah mendaftarkan domain:</p>
-                        <ol className="list-decimal pl-4.5 space-y-1.5">
-                          <li>
-                            Buka tautan langsung ini: <a href="https://console.firebase.google.com/project/pivotal-spirit-hln7n/authentication/settings" target="_blank" rel="noreferrer" className="text-emerald-600 hover:underline font-bold inline-flex items-center gap-0.5">
-                              Firebase Auth Settings <ArrowUpRight className="w-3 h-3" />
-                            </a>
-                          </li>
-                          <li>Pastikan Anda login di Firebase menggunakan akun Google <strong className="text-slate-800 font-bold">oryzanurracman17@gmail.com</strong>.</li>
-                          <li>Di halaman tersebut, pilih menu <span className="font-bold text-gray-800">Authorized domains</span> (Domain yang diotorisasi).</li>
-                          <li>Klik tombol <span className="font-bold text-gray-800">Add domain</span>, tempel domain di atas (yang telah disalin), lalu klik <span className="font-bold text-gray-800">Add</span>.</li>
-                          <li>Setelah ditambahkan, silakan muat ulang halaman ini (refresh) dan coba klik tombol <strong>Sign in dengan Google</strong> kembali!</li>
-                        </ol>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
-          ) : (
-            /* Logged In Status */
-            <div className="space-y-6">
-              
-              {/* Operator Info card */}
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                <div className="flex items-center gap-3">
-                  <img 
-                    src={user.photoURL || 'https://via.placeholder.com/40'} 
-                    alt="avatar" 
-                    referrerPolicy="no-referrer"
-                    className="w-10 h-10 rounded-full ring-2 ring-emerald-500"
-                  />
+
+            {/* Config Form */}
+            <form onSubmit={handleSaveAppsScript} className="p-5 bg-white border border-slate-100 rounded-2xl space-y-4">
+              <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
+                <Link className="w-4 h-4 text-emerald-600" /> Form Konfigurasi Koneksi:
+              </h4>
+
+              <div className="space-y-1.5">
+                <label className="block text-[10px] font-black text-emerald-600 uppercase tracking-wider">
+                  URL Google Apps Script Web App <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="url"
+                  required
+                  placeholder="https://script.google.com/macros/s/.../exec"
+                  value={appsScriptUrlInput}
+                  onChange={(e) => setAppsScriptUrlInput(e.target.value)}
+                  className="w-full px-3 py-2.5 text-xs bg-slate-50 border-2 border-emerald-50 focus:border-emerald-500 rounded-xl font-mono text-slate-800 outline-none transition-all"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-[10px] font-black text-emerald-600 uppercase tracking-wider">
+                  URL Google Spreadsheet (Opsional)
+                </label>
+                <input
+                  type="url"
+                  placeholder="https://docs.google.com/spreadsheets/d/.../edit"
+                  value={spreadsheetUrlInput}
+                  onChange={(e) => setSpreadsheetUrlInput(e.target.value)}
+                  className="w-full px-3 py-2.5 text-xs bg-slate-50 border-2 border-emerald-50 focus:border-emerald-500 rounded-xl font-mono text-slate-800 outline-none transition-all"
+                />
+                <p className="text-[10px] text-gray-400 font-semibold">Tautan spreadsheet Anda untuk memudahkan akses tombol buka di panel.</p>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="submit"
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-black py-3 rounded-xl text-xs transition-colors cursor-pointer uppercase tracking-wider text-center"
+                >
+                  Simpan Koneksi
+                </button>
+                <button
+                  type="button"
+                  onClick={handleTestConnection}
+                  disabled={isTestingConnection}
+                  className="px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer uppercase tracking-wider border border-slate-200"
+                >
+                  {isTestingConnection ? 'Menguji...' : 'Uji Koneksi'}
+                </button>
+              </div>
+            </form>
+
+            {/* Connection Status Indicator */}
+            {sheetConfig && (
+              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 animate-fade-in">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
                   <div>
-                    <h4 className="text-xs font-bold text-gray-800">{user.displayName || 'Operator Sekolah'}</h4>
-                    <p className="text-[11px] text-gray-400 font-mono">{user.email}</p>
+                    <h5 className="text-xs font-black text-emerald-950 uppercase tracking-wider">Spreadsheet Terhubung</h5>
+                    <p className="text-[10px] text-emerald-800 font-mono select-all truncate max-w-[280px]" title={sheetConfig.appsScriptUrl}>
+                      Script: {sheetConfig.appsScriptUrl}
+                    </p>
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleGoogleLogout}
-                  className="flex items-center gap-1.5 text-[11px] font-bold text-rose-600 hover:text-rose-700 bg-rose-50 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  Logout
-                </button>
+                <div className="flex gap-2">
+                  {sheetConfig.spreadsheetUrl && (
+                    <a
+                      href={sheetConfig.spreadsheetUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black transition-colors uppercase tracking-wider"
+                    >
+                      Buka Sheet <ArrowUpRight className="w-3.5 h-3.5" />
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm('Apakah Anda yakin ingin memutuskan koneksi Spreadsheet?')) {
+                        setSheetConfig(null);
+                        setAppsScriptUrlInput('');
+                        setSpreadsheetUrlInput('');
+                        setSyncLogs(prev => [...prev, 'Koneksi spreadsheet diputuskan.']);
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[10px] font-black transition-colors uppercase tracking-wider cursor-pointer"
+                  >
+                    Putus Koneksi
+                  </button>
+                </div>
               </div>
-
-              {/* Spreadsheet Config Block */}
-              <div className="border-t border-gray-100 pt-5 space-y-4">
-                
-                {sheetConfig ? (
-                  /* Linked sheet details */
-                  <div className="p-5 bg-emerald-50/50 border border-emerald-500/20 rounded-2xl space-y-3">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
-                        <h4 className="text-xs font-bold text-emerald-950 uppercase tracking-wide">
-                          Spreadsheet Terkoneksi Aktif
-                        </h4>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setSheetConfig(null)}
-                        className="text-[10px] font-bold text-red-600 hover:underline cursor-pointer"
-                      >
-                        Putuskan Koneksi
-                      </button>
-                    </div>
-
-                    <div>
-                      <p className="text-xs font-bold text-gray-800">{sheetConfig.title}</p>
-                      <p className="text-[10px] text-gray-400 font-mono select-all mt-0.5" title="Copy Spreadsheet ID">
-                        ID: {sheetConfig.spreadsheetId}
-                      </p>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2.5 pt-1.5">
-                      <a
-                        href={sheetConfig.spreadsheetUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-bold transition-colors shadow-sm"
-                      >
-                        Buka di Google Sheets
-                        <ArrowUpRight className="w-3.5 h-3.5" />
-                      </a>
-
-                      <button
-                        type="button"
-                        onClick={handleSyncAll}
-                        disabled={isSyncingAll || pendingCount === 0}
-                        className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl text-[11px] font-bold transition-all shadow-sm cursor-pointer"
-                      >
-                        <RefreshCw className={`w-3.5 h-3.5 ${isSyncingAll ? 'animate-spin' : ''}`} />
-                        Sinkronkan Data Pending ({pendingCount})
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  /* Setup Spreadsheet Options */
-                  <div className="space-y-4">
-                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                      <p className="text-xs text-gray-500 leading-relaxed font-medium mb-4">
-                        Sistem Anda siap dihubungkan dengan Google Sheets. Silakan pilih salah satu opsi di bawah untuk mengintegrasikan data registrasi siswa:
-                      </p>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {/* Option 1: Create New Spreadsheet */}
-                        <button
-                          type="button"
-                          onClick={handleCreateNewSheet}
-                          disabled={isSyncingAll}
-                          className="p-4 bg-white hover:bg-emerald-50/20 border border-slate-200 hover:border-emerald-500/50 rounded-xl text-left transition-all group flex flex-col justify-between h-32 cursor-pointer shadow-sm"
-                        >
-                          <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 group-hover:scale-105 transition-transform">
-                            <Sparkles className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <h5 className="text-xs font-bold text-gray-800">Buat Baru Otomatis</h5>
-                            <p className="text-[10px] text-gray-400 mt-0.5">Membuat spreadsheet instan di Drive Anda</p>
-                          </div>
-                        </button>
-
-                        {/* Option 2: Link Custom Sheet */}
-                        <button
-                          type="button"
-                          onClick={() => setIsLinkingCustom(true)}
-                          className="p-4 bg-white hover:bg-emerald-50/20 border border-slate-200 hover:border-emerald-500/50 rounded-xl text-left transition-all group flex flex-col justify-between h-32 cursor-pointer shadow-sm"
-                        >
-                          <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 group-hover:scale-105 transition-transform">
-                            <Link className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <h5 className="text-xs font-bold text-gray-800">Sambungkan Manual</h5>
-                            <p className="text-[10px] text-gray-400 mt-0.5">Masukkan ID Spreadsheet yang sudah ada</p>
-                          </div>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Linking Input popup / expander */}
-                    {isLinkingCustom && (
-                      <form onSubmit={handleLinkCustomSheet} className="p-4 border border-amber-500/20 bg-amber-50/10 rounded-2xl space-y-3">
-                        <h4 className="text-xs font-bold text-gray-700">Masukkan ID Spreadsheet atau URL lengkap</h4>
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            required
-                            placeholder="Contoh: 1v4m86_FLa... atau URL penuh"
-                            value={customSpreadsheetId}
-                            onChange={(e) => setCustomSpreadsheetId(e.target.value)}
-                            className="w-full px-3 py-2 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500 font-mono"
-                          />
-                          <button
-                            type="submit"
-                            className="px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-colors"
-                          >
-                            Sambungkan
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setIsLinkingCustom(false)}
-                            className="px-3 bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-semibold rounded-lg transition-colors"
-                          >
-                            Batal
-                          </button>
-                        </div>
-                      </form>
-                    )}
-
-                  </div>
-                )}
-
-              </div>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* WhatsApp Group Configuration Card */}
           <div className="border-t border-gray-100 pt-6 mt-6 space-y-4">

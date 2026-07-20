@@ -3,15 +3,13 @@ import Header from './components/Header';
 import RegistrationForm from './components/RegistrationForm';
 import AdminDashboard from './components/AdminDashboard';
 import { StudentRegistration, GoogleSheetConfig } from './types';
-import { getAccessToken, initAuth } from './lib/firebase';
-import { appendRegistrationToSheet } from './lib/sheets';
+import { appendRegistrationToAppsScript } from './lib/sheets';
 import { Sparkles, Trophy, FileSpreadsheet, ListTodo, ShieldCheck } from 'lucide-react';
 
 export default function App() {
   const [tab, setTab] = useState<'form' | 'admin'>('form');
   const [registrations, setRegistrations] = useState<StudentRegistration[]>([]);
   const [sheetConfig, setSheetConfig] = useState<GoogleSheetConfig | null>(null);
-  const [token, setToken] = useState<string | null>(null);
   const [waLink, setWaLink] = useState<string>('https://chat.whatsapp.com/CgWJzVBrQ7vAZu1BSJHS8l');
 
   // 1. Initial Load from LocalStorage
@@ -51,20 +49,7 @@ export default function App() {
     }
   }, [sheetConfig]);
 
-  // 3. Listen to Firebase auth to grab the Google API Access Token
-  useEffect(() => {
-    const unsubscribe = initAuth(
-      (user, accessToken) => {
-        setToken(accessToken);
-      },
-      () => {
-        setToken(null);
-      }
-    );
-    return () => unsubscribe();
-  }, []);
-
-  // 4. Create new student registration
+  // 3. Create new student registration
   const handleRegister = async (
     formData: Omit<StudentRegistration, 'id' | 'registeredAt' | 'syncStatus'>
   ): Promise<StudentRegistration> => {
@@ -79,18 +64,17 @@ export default function App() {
       syncStatus: 'pending'
     };
 
-    // Attempt direct real-time sync with Google Spreadsheet if connected & token available
+    // Attempt direct real-time sync with Google Apps Script if connected
     let updatedReg = { ...newReg };
-    const currentToken = token || (await getAccessToken());
 
-    if (currentToken && sheetConfig) {
+    if (sheetConfig && sheetConfig.appsScriptUrl) {
       try {
-        await appendRegistrationToSheet(sheetConfig.spreadsheetId, newReg, currentToken);
+        await appendRegistrationToAppsScript(sheetConfig.appsScriptUrl, newReg);
         updatedReg.syncStatus = 'synced';
       } catch (err: any) {
         console.warn('Real-time sync failed, leaving registration as pending:', err);
         updatedReg.syncStatus = 'failed';
-        updatedReg.errorMessage = err.message || 'Direct sync failed';
+        updatedReg.errorMessage = err.message || 'Sync failed';
       }
     }
 
@@ -102,18 +86,14 @@ export default function App() {
     return updatedReg;
   };
 
-  // 5. Synchronize a single pending/failed registration from Admin Panel
+  // 4. Synchronize a single pending/failed registration from Admin Panel
   const syncSingleRegistration = async (reg: StudentRegistration): Promise<boolean> => {
-    const currentToken = token || (await getAccessToken());
-    if (!currentToken) {
-      throw new Error('Token akses tidak tersedia. Silakan login kembali.');
-    }
-    if (!sheetConfig) {
-      throw new Error('Spreadsheet belum tersambung.');
+    if (!sheetConfig || !sheetConfig.appsScriptUrl) {
+      throw new Error('URL Google Apps Script belum tersambung.');
     }
 
     try {
-      await appendRegistrationToSheet(sheetConfig.spreadsheetId, reg, currentToken);
+      await appendRegistrationToAppsScript(sheetConfig.appsScriptUrl, reg);
       
       const updatedList = registrations.map(r => {
         if (r.id === reg.id) {
