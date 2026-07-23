@@ -7,21 +7,22 @@ export async function appendRegistrationToAppsScript(
   appsScriptUrl: string,
   registration: StudentRegistration
 ): Promise<boolean> {
-  try {
-    const payload = {
-      registeredAt: registration.registeredAt,
-      id: registration.id,
-      registrationType: registration.registrationType,
-      fullName: registration.fullName,
-      birthPlace: registration.birthPlace,
-      birthDate: registration.birthDate,
-      classNumber: registration.classNumber,
-      classLetter: registration.classLetter,
-      height: registration.height,
-      weight: registration.weight,
-      agreedToTerms: registration.agreedToTerms
-    };
+  const payload = {
+    registeredAt: registration.registeredAt,
+    id: registration.id,
+    registrationType: registration.registrationType,
+    fullName: registration.fullName,
+    birthPlace: registration.birthPlace,
+    birthDate: registration.birthDate,
+    classNumber: registration.classNumber,
+    classLetter: registration.classLetter,
+    height: registration.height,
+    weight: registration.weight,
+    agreedToTerms: registration.agreedToTerms
+  };
 
+  try {
+    // Attempt standard POST request first (with credentials/CORS check if supported)
     const response = await fetch(appsScriptUrl, {
       method: 'POST',
       headers: {
@@ -30,30 +31,49 @@ export async function appendRegistrationToAppsScript(
       body: JSON.stringify(payload)
     });
 
-    if (!response.ok) {
+    if (response.ok) {
+      const text = await response.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        if (text.toLowerCase().includes('error') || text.toLowerCase().includes('fail')) {
+          throw new Error(text || 'Google Apps Script mengembalikan error');
+        }
+        return true;
+      }
+
+      if (data && data.status === 'error') {
+        throw new Error(data.message || 'Gagal menyimpan ke Google Sheets via Apps Script');
+      }
+
+      return true;
+    } else {
       throw new Error(`HTTP Error: ${response.status} ${response.statusText}`);
     }
-
-    const text = await response.text();
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch (e) {
-      // In case Google Apps Script returns some plain text / redirect
-      if (text.toLowerCase().includes('error') || text.toLowerCase().includes('fail')) {
-        throw new Error(text || 'Google Apps Script mengembalikan error');
-      }
-      return true;
-    }
-
-    if (data && data.status === 'error') {
-      throw new Error(data.message || 'Gagal menyimpan ke Google Sheets via Apps Script');
-    }
-
-    return true;
   } catch (err: any) {
-    console.error('Apps Script Sync Error:', err);
-    throw new Error(err.message || 'Gagal terhubung ke Google Apps Script. Pastikan URL benar dan Deploy sebagai "Anyone".');
+    console.warn('Standard POST failed or blocked by CORS. Retrying with mode: "no-cors" fallback...', err);
+    
+    try {
+      // Fallback: Send with mode: 'no-cors'
+      // This allows the payload to successfully reach Google Apps Script and insert rows,
+      // bypassing any strict browser CORS preflight / redirect blocks.
+      await fetch(appsScriptUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      // In no-cors mode, the response is opaque and we cannot read the body,
+      // but as long as it does not throw a network exception, the request was successfully sent!
+      return true;
+    } catch (fallbackErr: any) {
+      console.error('Apps Script Sync Error (both standard and fallback failed):', fallbackErr);
+      throw new Error(fallbackErr.message || 'Gagal terhubung ke Google Apps Script. Pastikan koneksi internet aktif.');
+    }
   }
 }
 

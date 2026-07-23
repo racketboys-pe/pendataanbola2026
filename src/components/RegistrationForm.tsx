@@ -9,9 +9,10 @@ import { StudentRegistration, RegistrationType } from '../types';
 interface RegistrationFormProps {
   onRegister: (data: Omit<StudentRegistration, 'id' | 'registeredAt' | 'syncStatus'>) => Promise<StudentRegistration>;
   waLink: string;
+  registrations: StudentRegistration[];
 }
 
-export default function RegistrationForm({ onRegister, waLink }: RegistrationFormProps) {
+export default function RegistrationForm({ onRegister, waLink, registrations }: RegistrationFormProps) {
   // Form fields state
   const [regType, setRegType] = useState<RegistrationType>('baru');
   const [fullName, setFullName] = useState('');
@@ -27,6 +28,11 @@ export default function RegistrationForm({ onRegister, waLink }: RegistrationFor
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successReceipt, setSuccessReceipt] = useState<StudentRegistration | null>(null);
+
+  // Derive up-to-date live registration state from parent state if synced in background
+  const displayReceipt = successReceipt 
+    ? (registrations.find(r => r.id === successReceipt.id) || successReceipt) 
+    : null;
 
   // Field touch / dirty states for validation feedback
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -552,7 +558,7 @@ export default function RegistrationForm({ onRegister, waLink }: RegistrationFor
                     ID PENDAFTARAN
                   </span>
                   <p className="text-sm font-black text-gray-800 font-mono">
-                    {successReceipt.id}
+                    {displayReceipt?.id}
                   </p>
                 </div>
                 <div className="text-right">
@@ -560,7 +566,7 @@ export default function RegistrationForm({ onRegister, waLink }: RegistrationFor
                     STATUS SHEET
                   </span>
                   <div>
-                    {successReceipt.syncStatus === 'synced' ? (
+                    {displayReceipt?.syncStatus === 'synced' ? (
                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-100 text-emerald-800 rounded-full text-[10px] font-bold">
                         <Check className="w-3 h-3" /> Terparkir (Synced)
                       </span>
@@ -583,13 +589,13 @@ export default function RegistrationForm({ onRegister, waLink }: RegistrationFor
                   <div>
                     <span className="text-gray-400 font-medium">Tipe Formulir</span>
                     <p className="font-bold text-emerald-700 mt-0.5">
-                      {successReceipt.registrationType === 'baru' ? 'Pendaftaran Baru' : 'Daftar Ulang'}
+                      {displayReceipt?.registrationType === 'baru' ? 'Pendaftaran Baru' : 'Daftar Ulang'}
                     </p>
                   </div>
                   <div>
                     <span className="text-gray-400 font-medium">Kelas Siswa</span>
                     <p className="font-bold text-gray-800 mt-0.5">
-                      Kelas {successReceipt.classNumber} - {successReceipt.classLetter}
+                      Kelas {displayReceipt?.classNumber} - {displayReceipt?.classLetter}
                     </p>
                   </div>
                 </div>
@@ -597,7 +603,7 @@ export default function RegistrationForm({ onRegister, waLink }: RegistrationFor
                 <div className="grid grid-cols-1 border-t border-gray-100 pt-3.5">
                   <span className="text-xs text-gray-400 font-medium">Nama Lengkap Siswa</span>
                   <p className="text-base font-black text-gray-900 mt-0.5 uppercase">
-                    {successReceipt.fullName}
+                    {displayReceipt?.fullName}
                   </p>
                 </div>
 
@@ -605,13 +611,13 @@ export default function RegistrationForm({ onRegister, waLink }: RegistrationFor
                   <div>
                     <span className="text-gray-400 font-medium">Tempat, Tgl Lahir</span>
                     <p className="font-bold text-gray-800 mt-0.5">
-                      {successReceipt.birthPlace}, {successReceipt.birthDate}
+                      {displayReceipt?.birthPlace}, {displayReceipt?.birthDate}
                     </p>
                   </div>
                   <div>
                     <span className="text-gray-400 font-medium">Tinggi &amp; Berat</span>
                     <p className="font-bold text-gray-800 mt-0.5">
-                      {successReceipt.height} cm / {successReceipt.weight} kg
+                      {displayReceipt?.height} cm / {displayReceipt?.weight} kg
                     </p>
                   </div>
                 </div>

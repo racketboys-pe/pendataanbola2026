@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Header from './components/Header';
 import RegistrationForm from './components/RegistrationForm';
 import AdminDashboard from './components/AdminDashboard';
@@ -8,17 +8,43 @@ import { Sparkles, Trophy, FileSpreadsheet, ListTodo, ShieldCheck } from 'lucide
 import { doc, setDoc, collection, onSnapshot, query, orderBy, deleteDoc } from 'firebase/firestore';
 import { db } from './lib/firebase';
 
+const safeLocalStorage = {
+  getItem: (key: string): string | null => {
+    try {
+      return localStorage.getItem(key);
+    } catch (e) {
+      console.warn('Failed to access localStorage:', e);
+      return null;
+    }
+  },
+  setItem: (key: string, value: string) => {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e) {
+      console.warn('Failed to write to localStorage:', e);
+    }
+  },
+  removeItem: (key: string) => {
+    try {
+      localStorage.removeItem(key);
+    } catch (e) {
+      console.warn('Failed to remove from localStorage:', e);
+    }
+  }
+};
+
 export default function App() {
   const [tab, setTab] = useState<'form' | 'admin'>('form');
   const [registrations, setRegistrations] = useState<StudentRegistration[]>([]);
   const [sheetConfig, setSheetConfig] = useState<GoogleSheetConfig | null>(null);
   const [waLink, setWaLink] = useState<string>('https://chat.whatsapp.com/CgWJzVBrQ7vAZu1BSJHS8l');
   const [logoUrl, setLogoUrl] = useState<string>('');
+  const activeSyncsRef = useRef<Set<string>>(new Set());
 
   // 1. Initial Load & Set up Firestore Real-time Sync
   useEffect(() => {
     // Preload from localstorage for instant UI display while Firestore connects
-    const savedRegs = localStorage.getItem('sdn_ulujami_registrations');
+    const savedRegs = safeLocalStorage.getItem('sdn_ulujami_registrations');
     if (savedRegs) {
       try {
         setRegistrations(JSON.parse(savedRegs));
@@ -27,7 +53,7 @@ export default function App() {
       }
     }
 
-    const savedSheetConfig = localStorage.getItem('sdn_ulujami_sheet_config');
+    const savedSheetConfig = safeLocalStorage.getItem('sdn_ulujami_sheet_config');
     if (savedSheetConfig) {
       try {
         setSheetConfig(JSON.parse(savedSheetConfig));
@@ -36,12 +62,12 @@ export default function App() {
       }
     }
 
-    const savedWaLink = localStorage.getItem('sdn_ulujami_wa_link');
+    const savedWaLink = safeLocalStorage.getItem('sdn_ulujami_wa_link');
     if (savedWaLink) {
       setWaLink(savedWaLink);
     }
 
-    const savedLogo = localStorage.getItem('sdn_ulujami_logo');
+    const savedLogo = safeLocalStorage.getItem('sdn_ulujami_logo');
     if (savedLogo) {
       setLogoUrl(savedLogo);
     }
@@ -57,15 +83,15 @@ export default function App() {
             spreadsheetUrl: data.spreadsheetUrl || ''
           };
           setSheetConfig(newConfig);
-          localStorage.setItem('sdn_ulujami_sheet_config', JSON.stringify(newConfig));
+          safeLocalStorage.setItem('sdn_ulujami_sheet_config', JSON.stringify(newConfig));
         }
         if (data.waLink !== undefined) {
           setWaLink(data.waLink || 'https://chat.whatsapp.com/CgWJzVBrQ7vAZu1BSJHS8l');
-          localStorage.setItem('sdn_ulujami_wa_link', data.waLink || 'https://chat.whatsapp.com/CgWJzVBrQ7vAZu1BSJHS8l');
+          safeLocalStorage.setItem('sdn_ulujami_wa_link', data.waLink || 'https://chat.whatsapp.com/CgWJzVBrQ7vAZu1BSJHS8l');
         }
         if (data.logoUrl !== undefined) {
           setLogoUrl(data.logoUrl || '');
-          localStorage.setItem('sdn_ulujami_logo', data.logoUrl || '');
+          safeLocalStorage.setItem('sdn_ulujami_logo', data.logoUrl || '');
         }
       } else {
         // Initialize config document on Firestore if it doesn't exist
@@ -89,7 +115,7 @@ export default function App() {
         list.push(doc.data() as StudentRegistration);
       });
       setRegistrations(list);
-      localStorage.setItem('sdn_ulujami_registrations', JSON.stringify(list));
+      safeLocalStorage.setItem('sdn_ulujami_registrations', JSON.stringify(list));
     }, (error) => {
       console.error("Failed to sync registrations from Firestore:", error);
     });
@@ -118,6 +144,47 @@ export default function App() {
     }
   }, [logoUrl]);
 
+  // Auto-sync effect: automatically syncs any 'pending' or 'failed' registrations to Google Sheets
+  // when a sheet config is active. This runs on any active device (including the admin's device)
+  // to ensure that even if a parent's browser is closed, offline, or blocked by CORS, the data is
+  // synced to Sheets as soon as the Admin dashboard is opened.
+  useEffect(() => {
+    if (!sheetConfig || !sheetConfig.appsScriptUrl) return;
+
+    const pendingOrFailed = registrations.filter(r => r.syncStatus === 'pending');
+    if (pendingOrFailed.length === 0) return;
+
+    pendingOrFailed.forEach((reg) => {
+      if (activeSyncsRef.current.has(reg.id)) return;
+      activeSyncsRef.current.add(reg.id);
+
+      console.log(`Auto-syncing registration in background: ${reg.fullName} (${reg.id})`);
+      appendRegistrationToAppsScript(sheetConfig.appsScriptUrl, reg)
+        .then(() => {
+          // Success! Update Firestore status
+          const docRef = doc(db, 'registrations', reg.id);
+          setDoc(docRef, { syncStatus: 'synced', errorMessage: null }, { merge: true })
+            .catch(err => console.error('Failed to update synced status in Firestore:', err));
+
+          // Local state and localStorage will be updated automatically via the real-time onSnapshot listener
+        })
+        .catch((err) => {
+          console.warn(`Auto-sync failed for ${reg.fullName}:`, err);
+          // Mark as failed in Firestore so we don't spam requests infinitely,
+          // but we can retry on next fresh reload or manual click
+          const docRef = doc(db, 'registrations', reg.id);
+          setDoc(docRef, { 
+            syncStatus: 'failed', 
+            errorMessage: err.message || 'Gagal sinkronisasi otomatis.' 
+          }, { merge: true })
+            .catch(fireErr => console.error('Failed to update failed status in Firestore:', fireErr));
+        })
+        .finally(() => {
+          activeSyncsRef.current.delete(reg.id);
+        });
+    });
+  }, [registrations, sheetConfig]);
+
   // 2. Create new student registration
   const handleRegister = async (
     formData: Omit<StudentRegistration, 'id' | 'registeredAt' | 'syncStatus'>
@@ -136,7 +203,7 @@ export default function App() {
     // Save locally first to guarantee instant UI update
     const updatedList = [newReg, ...registrations];
     setRegistrations(updatedList);
-    localStorage.setItem('sdn_ulujami_registrations', JSON.stringify(updatedList));
+    safeLocalStorage.setItem('sdn_ulujami_registrations', JSON.stringify(updatedList));
 
     // Save to Firestore in background (completely non-blocking)
     const regDocRef = doc(db, 'registrations', id);
@@ -157,7 +224,7 @@ export default function App() {
           // Update local state and localStorage
           setRegistrations(prev => {
             const newList = prev.map(r => r.id === id ? { ...r, syncStatus: 'synced' as const, errorMessage: undefined } : r);
-            localStorage.setItem('sdn_ulujami_registrations', JSON.stringify(newList));
+            safeLocalStorage.setItem('sdn_ulujami_registrations', JSON.stringify(newList));
             return newList;
           });
         })
@@ -174,7 +241,7 @@ export default function App() {
           // Update local state and localStorage
           setRegistrations(prev => {
             const newList = prev.map(r => r.id === id ? { ...r, syncStatus: 'failed' as const, errorMessage: err.message || 'Gagal terhubung ke Google Sheets.' } : r);
-            localStorage.setItem('sdn_ulujami_registrations', JSON.stringify(newList));
+            safeLocalStorage.setItem('sdn_ulujami_registrations', JSON.stringify(newList));
             return newList;
           });
         });
@@ -206,7 +273,7 @@ export default function App() {
 
       const updatedList = registrations.map(r => r.id === reg.id ? updatedReg : r);
       setRegistrations(updatedList);
-      localStorage.setItem('sdn_ulujami_registrations', JSON.stringify(updatedList));
+      safeLocalStorage.setItem('sdn_ulujami_registrations', JSON.stringify(updatedList));
       return true;
     } catch (err: any) {
       const updatedReg: StudentRegistration = {
@@ -223,7 +290,7 @@ export default function App() {
 
       const updatedList = registrations.map(r => r.id === reg.id ? updatedReg : r);
       setRegistrations(updatedList);
-      localStorage.setItem('sdn_ulujami_registrations', JSON.stringify(updatedList));
+      safeLocalStorage.setItem('sdn_ulujami_registrations', JSON.stringify(updatedList));
       throw err;
     }
   };
@@ -232,9 +299,9 @@ export default function App() {
   const handleUpdateSheetConfig = async (config: GoogleSheetConfig | null) => {
     setSheetConfig(config);
     if (config) {
-      localStorage.setItem('sdn_ulujami_sheet_config', JSON.stringify(config));
+      safeLocalStorage.setItem('sdn_ulujami_sheet_config', JSON.stringify(config));
     } else {
-      localStorage.removeItem('sdn_ulujami_sheet_config');
+      safeLocalStorage.removeItem('sdn_ulujami_sheet_config');
     }
 
     try {
@@ -250,7 +317,7 @@ export default function App() {
 
   const handleUpdateWaLink = async (link: string) => {
     setWaLink(link);
-    localStorage.setItem('sdn_ulujami_wa_link', link);
+    safeLocalStorage.setItem('sdn_ulujami_wa_link', link);
 
     try {
       const configDocRef = doc(db, 'configs', 'main');
@@ -263,9 +330,9 @@ export default function App() {
   const handleUpdateLogo = async (logo: string) => {
     setLogoUrl(logo);
     if (logo) {
-      localStorage.setItem('sdn_ulujami_logo', logo);
+      safeLocalStorage.setItem('sdn_ulujami_logo', logo);
     } else {
-      localStorage.removeItem('sdn_ulujami_logo');
+      safeLocalStorage.removeItem('sdn_ulujami_logo');
     }
 
     try {
@@ -279,7 +346,7 @@ export default function App() {
   // 5. Clear registrations from Local & Firestore
   const handleClearData = async () => {
     setRegistrations([]);
-    localStorage.removeItem('sdn_ulujami_registrations');
+    safeLocalStorage.removeItem('sdn_ulujami_registrations');
 
     try {
       for (const reg of registrations) {
@@ -307,7 +374,7 @@ export default function App() {
       <main className="flex-1 bg-[radial-gradient(#d1fae5_1px,transparent_1px)] [background-size:16px_16px]">
         {tab === 'form' ? (
           <div className="space-y-6">
-            <RegistrationForm onRegister={handleRegister} waLink={waLink} />
+            <RegistrationForm onRegister={handleRegister} waLink={waLink} registrations={registrations} />
           </div>
         ) : (
           <AdminDashboard 
