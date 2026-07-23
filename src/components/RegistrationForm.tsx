@@ -513,31 +513,6 @@ export default function RegistrationForm({ onRegister, waLink }: RegistrationFor
                   </ul>
                 </div>
 
-                <div className="relative z-10 border-t border-white/20 pt-4 mt-6 text-xs text-blue-100 font-bold uppercase tracking-wider">
-                  Membina Bibit Atlet Unggul Sejak Dini
-                </div>
-              </div>
-
-              {/* White Database Connected Card */}
-              <div className="bg-white rounded-3xl p-6 border-2 border-emerald-100 shadow-xl flex flex-col justify-between">
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center text-xl shrink-0">📡</div>
-                    <h4 className="text-emerald-900 font-black uppercase tracking-wide text-sm">Sistem Terintegrasi</h4>
-                  </div>
-                  <p className="text-emerald-700 text-xs leading-relaxed font-semibold">
-                    Data pendaftaran otomatis terparkir di <strong>Google Spreadsheet</strong> sekolah untuk transparansi, akurasi, dan kecepatan rekapitulasi data pemain.
-                  </p>
-                </div>
-                
-                <div className="flex justify-between items-center mt-6 pt-4 border-t border-emerald-50">
-                  <span className="bg-emerald-50 text-emerald-600 text-[10px] font-black py-1 px-3 rounded-full border border-emerald-100 tracking-wider">
-                    DATABASE_CONNECTED
-                  </span>
-                  <span className="text-[10px] text-gray-400 font-mono font-bold">
-                    v2.0-2026
-                  </span>
-                </div>
               </div>
             </aside>
           </motion.div>

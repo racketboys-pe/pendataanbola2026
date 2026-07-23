@@ -1,0 +1,46 @@
+{
+  "entities": {
+    "Config": {
+      "title": "Config",
+      "description": "Global application configuration",
+      "type": "object",
+      "properties": {
+        "appsScriptUrl": { "type": "string" },
+        "spreadsheetUrl": { "type": "string" },
+        "waLink": { "type": "string" },
+        "logoUrl": { "type": "string" }
+      }
+    },
+    "Registration": {
+      "title": "Registration",
+      "description": "Student Extracurricular Registration",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fullName": { "type": "string" },
+        "birthPlace": { "type": "string" },
+        "birthDate": { "type": "string" },
+        "classNumber": { "type": "string" },
+        "classLetter": { "type": "string" },
+        "height": { "type": "number" },
+        "weight": { "type": "number" },
+        "agreedToTerms": { "type": "boolean" },
+        "registrationType": { "type": "string", "enum": ["baru", "ulang"] },
+        "registeredAt": { "type": "string" },
+        "syncStatus": { "type": "string" },
+        "errorMessage": { "type": "string" }
+      },
+      "required": ["id", "fullName", "birthPlace", "birthDate", "classNumber", "classLetter", "height", "weight", "agreedToTerms", "registrationType", "registeredAt", "syncStatus"]
+    }
+  },
+  "firestore": {
+    "configs/main": {
+      "schema": "Config",
+      "description": "Global settings document"
+    },
+    "registrations/{registrationId}": {
+      "schema": "Registration",
+      "description": "List of student registrations"
+    }
+  }
+}
