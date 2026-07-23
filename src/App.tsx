@@ -133,34 +133,48 @@ export default function App() {
       syncStatus: 'pending'
     };
 
-    // Attempt direct real-time sync with Google Apps Script if connected
-    let updatedReg = { ...newReg };
+    // Save locally first to guarantee instant UI update
+    const updatedList = [newReg, ...registrations];
+    setRegistrations(updatedList);
+    localStorage.setItem('sdn_ulujami_registrations', JSON.stringify(updatedList));
 
-    if (sheetConfig && sheetConfig.appsScriptUrl) {
-      try {
-        await appendRegistrationToAppsScript(sheetConfig.appsScriptUrl, newReg);
-        updatedReg.syncStatus = 'synced';
-      } catch (err: any) {
-        console.warn('Real-time sync failed, leaving registration as pending:', err);
-        updatedReg.syncStatus = 'failed';
-        updatedReg.errorMessage = err.message || 'Sync failed';
-      }
-    }
-
-    // Save to Firestore
+    // Save to Firestore first so it's backed up immediately
     try {
       const regDocRef = doc(db, 'registrations', id);
-      await setDoc(regDocRef, updatedReg);
+      await setDoc(regDocRef, newReg);
     } catch (err) {
       console.error('Failed to save registration to Firestore:', err);
     }
 
-    // Save locally
-    const updatedList = [updatedReg, ...registrations];
-    setRegistrations(updatedList);
-    localStorage.setItem('sdn_ulujami_registrations', JSON.stringify(updatedList));
+    // Attempt background sync to Google Sheets if configured
+    if (sheetConfig && sheetConfig.appsScriptUrl) {
+      // Run this as an asynchronous non-blocking task so the UI does not freeze
+      appendRegistrationToAppsScript(sheetConfig.appsScriptUrl, newReg)
+        .then(async () => {
+          // Sync succeeded! Update Firestore to 'synced'
+          try {
+            const regDocRef = doc(db, 'registrations', id);
+            await setDoc(regDocRef, { syncStatus: 'synced', errorMessage: null }, { merge: true });
+          } catch (err) {
+            console.error('Failed to update synced status in Firestore:', err);
+          }
+        })
+        .catch(async (err: any) => {
+          console.warn('Background sync to Google Sheets failed:', err);
+          // Sync failed! Update Firestore to 'failed' and record the error
+          try {
+            const regDocRef = doc(db, 'registrations', id);
+            await setDoc(regDocRef, { 
+              syncStatus: 'failed', 
+              errorMessage: err.message || 'Gagal terhubung ke Google Sheets.' 
+            }, { merge: true });
+          } catch (fireErr) {
+            console.error('Failed to update failed status in Firestore:', fireErr);
+          }
+        });
+    }
 
-    return updatedReg;
+    return newReg;
   };
 
   // 3. Synchronize a single pending/failed registration from Admin Panel
