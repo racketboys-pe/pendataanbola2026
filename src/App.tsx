@@ -41,6 +41,11 @@ export default function App() {
   const [logoUrl, setLogoUrl] = useState<string>('');
   const activeSyncsRef = useRef<Set<string>>(new Set());
 
+  // Lifted Admin authorization state
+  const [isAdminAuthorized, setIsAdminAuthorized] = useState(() => {
+    return sessionStorage.getItem('sdn_ulujami_admin_logged') === 'true';
+  });
+
   // 1. Initial Load & Set up Firestore Real-time Sync
   useEffect(() => {
     // Preload from localstorage for instant UI display while Firestore connects
@@ -144,17 +149,17 @@ export default function App() {
     }
   }, [logoUrl]);
 
-  // Auto-sync effect: automatically syncs any 'pending' or 'failed' registrations to Google Sheets
-  // when a sheet config is active. This runs on any active device (including the admin's device)
-  // to ensure that even if a parent's browser is closed, offline, or blocked by CORS, the data is
-  // synced to Sheets as soon as the Admin dashboard is opened.
+  // Auto-sync effect: automatically syncs any 'pending' registrations to Google Sheets
+  // ONLY runs on the active Admin device to ensure that even if a parent's browser is closed,
+  // offline, or blocked by CORS, the data is synced to Sheets securely in the background.
   useEffect(() => {
+    if (!isAdminAuthorized) return;
     if (!sheetConfig || !sheetConfig.appsScriptUrl) return;
 
-    const pendingOrFailed = registrations.filter(r => r.syncStatus === 'pending');
-    if (pendingOrFailed.length === 0) return;
+    const pendingRegistrations = registrations.filter(r => r.syncStatus === 'pending');
+    if (pendingRegistrations.length === 0) return;
 
-    pendingOrFailed.forEach((reg) => {
+    pendingRegistrations.forEach((reg) => {
       if (activeSyncsRef.current.has(reg.id)) return;
       activeSyncsRef.current.add(reg.id);
 
@@ -165,8 +170,6 @@ export default function App() {
           const docRef = doc(db, 'registrations', reg.id);
           setDoc(docRef, { syncStatus: 'synced', errorMessage: null }, { merge: true })
             .catch(err => console.error('Failed to update synced status in Firestore:', err));
-
-          // Local state and localStorage will be updated automatically via the real-time onSnapshot listener
         })
         .catch((err) => {
           console.warn(`Auto-sync failed for ${reg.fullName}:`, err);
@@ -183,7 +186,7 @@ export default function App() {
           activeSyncsRef.current.delete(reg.id);
         });
     });
-  }, [registrations, sheetConfig]);
+  }, [registrations, sheetConfig, isAdminAuthorized]);
 
   // 2. Create new student registration
   const handleRegister = async (
@@ -230,17 +233,22 @@ export default function App() {
         })
         .catch((err: any) => {
           console.warn('Background sync to Google Sheets failed:', err);
-          // Sync failed! Update Firestore to 'failed' in the background
+          
+          // If we are logged in as admin, mark as failed. 
+          // If we are a parent, we KEEP it as pending so the Admin's active console can sync it automatically in the background.
+          const isAdmin = sessionStorage.getItem('sdn_ulujami_admin_logged') === 'true';
+          const nextStatus = isAdmin ? 'failed' : 'pending';
+
           const docRef = doc(db, 'registrations', id);
           setDoc(docRef, { 
-            syncStatus: 'failed', 
+            syncStatus: nextStatus, 
             errorMessage: err.message || 'Gagal terhubung ke Google Sheets.' 
           }, { merge: true })
-            .catch(fireErr => console.error('Failed to update failed status in Firestore:', fireErr));
+            .catch(fireErr => console.error('Failed to update status in Firestore:', fireErr));
 
           // Update local state and localStorage
           setRegistrations(prev => {
-            const newList = prev.map(r => r.id === id ? { ...r, syncStatus: 'failed' as const, errorMessage: err.message || 'Gagal terhubung ke Google Sheets.' } : r);
+            const newList = prev.map(r => r.id === id ? { ...r, syncStatus: nextStatus as any, errorMessage: err.message || 'Gagal terhubung ke Google Sheets.' } : r);
             safeLocalStorage.setItem('sdn_ulujami_registrations', JSON.stringify(newList));
             return newList;
           });
@@ -388,6 +396,8 @@ export default function App() {
             onUpdateWaLink={handleUpdateWaLink}
             logoUrl={logoUrl}
             onUpdateLogo={handleUpdateLogo}
+            isLocalAuthorized={isAdminAuthorized}
+            setIsLocalAuthorized={setIsAdminAuthorized}
           />
         )}
       </main>

@@ -20,6 +20,8 @@ interface AdminDashboardProps {
   onUpdateWaLink: (link: string) => void;
   logoUrl: string;
   onUpdateLogo: (logo: string) => void;
+  isLocalAuthorized: boolean;
+  setIsLocalAuthorized: (authorized: boolean) => void;
 }
 
 export default function AdminDashboard({
@@ -32,12 +34,10 @@ export default function AdminDashboard({
   waLink,
   onUpdateWaLink,
   logoUrl,
-  onUpdateLogo
+  onUpdateLogo,
+  isLocalAuthorized,
+  setIsLocalAuthorized
 }: AdminDashboardProps) {
-  // Local Session Admin Auth
-  const [isLocalAuthorized, setIsLocalAuthorized] = useState(() => {
-    return sessionStorage.getItem('sdn_ulujami_admin_logged') === 'true';
-  });
   const [loginId, setLoginId] = useState('');
   const [loginPass, setLoginPass] = useState('');
   const [loginError, setLoginError] = useState('');
