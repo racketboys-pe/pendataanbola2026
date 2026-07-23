@@ -438,7 +438,7 @@ export default function RegistrationForm({ onRegister, waLink, registrations }: 
                     {isSubmitting ? (
                       <>
                         <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                        Memproses Berkas...
+                        Menyimpan &amp; Sinkronisasi...
                       </>
                     ) : (
                       <>

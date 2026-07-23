@@ -5,7 +5,7 @@ import AdminDashboard from './components/AdminDashboard';
 import { StudentRegistration, GoogleSheetConfig } from './types';
 import { appendRegistrationToAppsScript } from './lib/sheets';
 import { Sparkles, Trophy, FileSpreadsheet, ListTodo, ShieldCheck } from 'lucide-react';
-import { doc, setDoc, collection, onSnapshot, query, orderBy, deleteDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, collection, onSnapshot, query, orderBy, deleteDoc } from 'firebase/firestore';
 import { db } from './lib/firebase';
 
 const safeLocalStorage = {
@@ -188,7 +188,7 @@ export default function App() {
     });
   }, [registrations, sheetConfig, isAdminAuthorized]);
 
-  // 2. Create new student registration
+  // 2. Create new student registration with direct sync to Google Sheets
   const handleRegister = async (
     formData: Omit<StudentRegistration, 'id' | 'registeredAt' | 'syncStatus'>
   ): Promise<StudentRegistration> => {
@@ -196,6 +196,29 @@ export default function App() {
     const id = `SB06P-${Math.floor(1000 + Math.random() * 9000)}`;
     const registeredAt = new Date().toISOString();
     
+    // Fetch latest sheet config directly from Firestore if not available in memory
+    let activeConfig = sheetConfig;
+    if (!activeConfig || !activeConfig.appsScriptUrl) {
+      try {
+        const configSnap = await getDoc(doc(db, 'configs', 'main'));
+        if (configSnap.exists()) {
+          const data = configSnap.data();
+          activeConfig = {
+            appsScriptUrl: data.appsScriptUrl || '',
+            spreadsheetUrl: data.spreadsheetUrl || ''
+          };
+          setSheetConfig(activeConfig);
+          safeLocalStorage.setItem('sdn_ulujami_sheet_config', JSON.stringify(activeConfig));
+        }
+      } catch (err) {
+        console.error('Failed to fetch config directly inside handleRegister:', err);
+      }
+    }
+
+    if (!activeConfig || !activeConfig.appsScriptUrl) {
+      throw new Error('Sistem pendaftaran belum siap. URL Google Sheets belum dikonfigurasi oleh admin pada komputer utama.');
+    }
+
     const newReg: StudentRegistration = {
       ...formData,
       id,
@@ -208,54 +231,61 @@ export default function App() {
     setRegistrations(updatedList);
     safeLocalStorage.setItem('sdn_ulujami_registrations', JSON.stringify(updatedList));
 
-    // Save to Firestore in background (completely non-blocking)
+    // Save to Firestore with 'pending' status
     const regDocRef = doc(db, 'registrations', id);
-    setDoc(regDocRef, newReg).catch((err) => {
-      console.error('Failed to save registration to Firestore in background:', err);
-    });
-
-    // Attempt background sync to Google Sheets if configured
-    if (sheetConfig && sheetConfig.appsScriptUrl) {
-      // Run this as an asynchronous non-blocking task so the UI does not freeze
-      appendRegistrationToAppsScript(sheetConfig.appsScriptUrl, newReg)
-        .then(() => {
-          // Sync succeeded! Update Firestore to 'synced' in the background
-          const docRef = doc(db, 'registrations', id);
-          setDoc(docRef, { syncStatus: 'synced', errorMessage: null }, { merge: true })
-            .catch(err => console.error('Failed to update synced status in Firestore:', err));
-
-          // Update local state and localStorage
-          setRegistrations(prev => {
-            const newList = prev.map(r => r.id === id ? { ...r, syncStatus: 'synced' as const, errorMessage: undefined } : r);
-            safeLocalStorage.setItem('sdn_ulujami_registrations', JSON.stringify(newList));
-            return newList;
-          });
-        })
-        .catch((err: any) => {
-          console.warn('Background sync to Google Sheets failed:', err);
-          
-          // If we are logged in as admin, mark as failed. 
-          // If we are a parent, we KEEP it as pending so the Admin's active console can sync it automatically in the background.
-          const isAdmin = sessionStorage.getItem('sdn_ulujami_admin_logged') === 'true';
-          const nextStatus = isAdmin ? 'failed' : 'pending';
-
-          const docRef = doc(db, 'registrations', id);
-          setDoc(docRef, { 
-            syncStatus: nextStatus, 
-            errorMessage: err.message || 'Gagal terhubung ke Google Sheets.' 
-          }, { merge: true })
-            .catch(fireErr => console.error('Failed to update status in Firestore:', fireErr));
-
-          // Update local state and localStorage
-          setRegistrations(prev => {
-            const newList = prev.map(r => r.id === id ? { ...r, syncStatus: nextStatus as any, errorMessage: err.message || 'Gagal terhubung ke Google Sheets.' } : r);
-            safeLocalStorage.setItem('sdn_ulujami_registrations', JSON.stringify(newList));
-            return newList;
-          });
-        });
+    try {
+      await setDoc(regDocRef, newReg);
+    } catch (err) {
+      console.error('Failed to save registration to Firestore:', err);
     }
 
-    return newReg;
+    // Direct blocking sync to Google Sheets (the form will show loading until this finishes)
+    try {
+      const syncSucceeded = await appendRegistrationToAppsScript(activeConfig.appsScriptUrl, newReg);
+      if (syncSucceeded) {
+        const syncedReg: StudentRegistration = {
+          ...newReg,
+          syncStatus: 'synced'
+        };
+
+        // Update status in Firestore
+        await setDoc(regDocRef, { syncStatus: 'synced', errorMessage: null }, { merge: true })
+          .catch(err => console.error('Failed to update synced status in Firestore:', err));
+
+        // Update local state and localStorage
+        setRegistrations(prev => {
+          const newList = prev.map(r => r.id === id ? syncedReg : r);
+          safeLocalStorage.setItem('sdn_ulujami_registrations', JSON.stringify(newList));
+          return newList;
+        });
+
+        return syncedReg;
+      } else {
+        throw new Error('Google Sheets mengembalikan respon tidak sukses.');
+      }
+    } catch (err: any) {
+      console.warn('Sync to Google Sheets failed during form submission:', err);
+      
+      const isAdmin = sessionStorage.getItem('sdn_ulujami_admin_logged') === 'true';
+      const nextStatus = isAdmin ? 'failed' : 'pending';
+
+      // Keep it in Firestore as pending/failed with error message
+      await setDoc(regDocRef, { 
+        syncStatus: nextStatus, 
+        errorMessage: err.message || 'Gagal terhubung ke Google Sheets.' 
+      }, { merge: true })
+        .catch(fireErr => console.error('Failed to update status in Firestore:', fireErr));
+
+      // Update local state and localStorage
+      setRegistrations(prev => {
+        const newList = prev.map(r => r.id === id ? { ...r, syncStatus: nextStatus as any, errorMessage: err.message || 'Gagal terhubung ke Google Sheets.' } : r);
+        safeLocalStorage.setItem('sdn_ulujami_registrations', JSON.stringify(newList));
+        return newList;
+      });
+
+      // Rethrow error so parent device is notified and knows the spreadsheet sync failed
+      throw new Error(`Pendaftaran tersimpan di database, tetapi gagal mengirim ke Google Sheets: ${err.message || 'Koneksi terputus.'}. Silakan coba kirim ulang.`);
+    }
   };
 
   // 3. Synchronize a single pending/failed registration from Admin Panel

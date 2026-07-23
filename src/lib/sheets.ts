@@ -150,6 +150,23 @@ function doPost(e) {
       sheet.getRange(1, 1, sheet.getLastRow(), sheet.getLastColumn()).setFontFamily("Arial");
     }
     
+    // Periksa apakah ID Pendaftaran sudah ada untuk menghindari duplikasi
+    var alreadyExists = false;
+    var lastRow = sheet.getLastRow();
+    if (lastRow > 1) {
+      var idValues = sheet.getRange(2, 2, lastRow - 1, 1).getValues();
+      for (var i = 0; i < idValues.length; i++) {
+        if (idValues[i][0] === data.id) {
+          alreadyExists = true;
+          break;
+        }
+      }
+    }
+
+    if (alreadyExists) {
+      return createJsonResponse({ status: "success", message: "Data sudah ada (duplikasi dicegah)" });
+    }
+
     // Format tanggal pendaftaran ke zona waktu lokal
     var formattedDate = "";
     if (data.registeredAt) {
