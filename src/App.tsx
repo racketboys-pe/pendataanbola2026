@@ -138,39 +138,45 @@ export default function App() {
     setRegistrations(updatedList);
     localStorage.setItem('sdn_ulujami_registrations', JSON.stringify(updatedList));
 
-    // Save to Firestore first so it's backed up immediately
-    try {
-      const regDocRef = doc(db, 'registrations', id);
-      await setDoc(regDocRef, newReg);
-    } catch (err) {
-      console.error('Failed to save registration to Firestore:', err);
-    }
+    // Save to Firestore in background (completely non-blocking)
+    const regDocRef = doc(db, 'registrations', id);
+    setDoc(regDocRef, newReg).catch((err) => {
+      console.error('Failed to save registration to Firestore in background:', err);
+    });
 
     // Attempt background sync to Google Sheets if configured
     if (sheetConfig && sheetConfig.appsScriptUrl) {
       // Run this as an asynchronous non-blocking task so the UI does not freeze
       appendRegistrationToAppsScript(sheetConfig.appsScriptUrl, newReg)
-        .then(async () => {
-          // Sync succeeded! Update Firestore to 'synced'
-          try {
-            const regDocRef = doc(db, 'registrations', id);
-            await setDoc(regDocRef, { syncStatus: 'synced', errorMessage: null }, { merge: true });
-          } catch (err) {
-            console.error('Failed to update synced status in Firestore:', err);
-          }
+        .then(() => {
+          // Sync succeeded! Update Firestore to 'synced' in the background
+          const docRef = doc(db, 'registrations', id);
+          setDoc(docRef, { syncStatus: 'synced', errorMessage: null }, { merge: true })
+            .catch(err => console.error('Failed to update synced status in Firestore:', err));
+
+          // Update local state and localStorage
+          setRegistrations(prev => {
+            const newList = prev.map(r => r.id === id ? { ...r, syncStatus: 'synced' as const, errorMessage: undefined } : r);
+            localStorage.setItem('sdn_ulujami_registrations', JSON.stringify(newList));
+            return newList;
+          });
         })
-        .catch(async (err: any) => {
+        .catch((err: any) => {
           console.warn('Background sync to Google Sheets failed:', err);
-          // Sync failed! Update Firestore to 'failed' and record the error
-          try {
-            const regDocRef = doc(db, 'registrations', id);
-            await setDoc(regDocRef, { 
-              syncStatus: 'failed', 
-              errorMessage: err.message || 'Gagal terhubung ke Google Sheets.' 
-            }, { merge: true });
-          } catch (fireErr) {
-            console.error('Failed to update failed status in Firestore:', fireErr);
-          }
+          // Sync failed! Update Firestore to 'failed' in the background
+          const docRef = doc(db, 'registrations', id);
+          setDoc(docRef, { 
+            syncStatus: 'failed', 
+            errorMessage: err.message || 'Gagal terhubung ke Google Sheets.' 
+          }, { merge: true })
+            .catch(fireErr => console.error('Failed to update failed status in Firestore:', fireErr));
+
+          // Update local state and localStorage
+          setRegistrations(prev => {
+            const newList = prev.map(r => r.id === id ? { ...r, syncStatus: 'failed' as const, errorMessage: err.message || 'Gagal terhubung ke Google Sheets.' } : r);
+            localStorage.setItem('sdn_ulujami_registrations', JSON.stringify(newList));
+            return newList;
+          });
         });
     }
 
@@ -192,13 +198,11 @@ export default function App() {
         errorMessage: undefined
       };
 
-      // Save to Firestore
-      try {
-        const regDocRef = doc(db, 'registrations', reg.id);
-        await setDoc(regDocRef, updatedReg);
-      } catch (err) {
+      // Save to Firestore in background
+      const regDocRef = doc(db, 'registrations', reg.id);
+      setDoc(regDocRef, updatedReg).catch(err => {
         console.error('Failed to update registration status in Firestore:', err);
-      }
+      });
 
       const updatedList = registrations.map(r => r.id === reg.id ? updatedReg : r);
       setRegistrations(updatedList);
@@ -211,13 +215,11 @@ export default function App() {
         errorMessage: err.message
       };
 
-      // Save to Firestore
-      try {
-        const regDocRef = doc(db, 'registrations', reg.id);
-        await setDoc(regDocRef, updatedReg);
-      } catch (err) {
+      // Save to Firestore in background
+      const regDocRef = doc(db, 'registrations', reg.id);
+      setDoc(regDocRef, updatedReg).catch(err => {
         console.error('Failed to update registration status in Firestore:', err);
-      }
+      });
 
       const updatedList = registrations.map(r => r.id === reg.id ? updatedReg : r);
       setRegistrations(updatedList);
