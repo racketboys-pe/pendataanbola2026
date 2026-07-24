@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trophy, Shield, Settings, FileSpreadsheet, UserCheck, Sparkles } from 'lucide-react';
+import { Trophy, Shield, Settings, FileSpreadsheet, UserCheck, Sparkles, Share2 } from 'lucide-react';
 
 interface HeaderProps {
   currentTab: 'form' | 'admin';
@@ -7,9 +7,10 @@ interface HeaderProps {
   isSheetConnected: boolean;
   spreadsheetUrl?: string;
   logoUrl?: string;
+  onOpenShareModal?: () => void;
 }
 
-export default function Header({ currentTab, setTab, isSheetConnected, spreadsheetUrl, logoUrl }: HeaderProps) {
+export default function Header({ currentTab, setTab, isSheetConnected, spreadsheetUrl, logoUrl, onOpenShareModal }: HeaderProps) {
   return (
     <header className="relative overflow-hidden bg-emerald-600 text-white shadow-lg border-b-4 border-yellow-400">
       {/* Decorative background soccer pattern */}
@@ -75,6 +76,17 @@ export default function Header({ currentTab, setTab, isSheetConnected, spreadshe
               Operator (Admin)
             </button>
 
+            {onOpenShareModal && (
+              <button
+                onClick={onOpenShareModal}
+                className="flex items-center gap-2 px-4 py-2.5 bg-emerald-800 hover:bg-emerald-900 border border-yellow-300/50 text-yellow-300 rounded-2xl text-xs font-black uppercase tracking-wider transition-all duration-300 shadow-md transform active:scale-95"
+                title="Bagikan Link Pendaftaran Publik"
+              >
+                <Share2 className="w-4 h-4" />
+                <span>Bagikan Link</span>
+              </button>
+            )}
+
             {/* Google Sheets Connection Badge - Only visible on Admin Tab */}
             {currentTab === 'admin' && isSheetConnected && spreadsheetUrl && (
               <a
@@ -85,7 +97,7 @@ export default function Header({ currentTab, setTab, isSheetConnected, spreadshe
                 title="Buka Google Spreadsheet"
               >
                 <FileSpreadsheet className="w-4 h-4 text-yellow-300" />
-                Spreadsheet Aktif
+                Spreadsheet
               </a>
             )}
           </div>

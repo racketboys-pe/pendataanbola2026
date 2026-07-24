@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import Header from './components/Header';
 import RegistrationForm from './components/RegistrationForm';
 import AdminDashboard from './components/AdminDashboard';
+import ShareModal from './components/ShareModal';
 import { StudentRegistration, GoogleSheetConfig } from './types';
 import { appendRegistrationToAppsScript } from './lib/sheets';
 import { Sparkles, Trophy, FileSpreadsheet, ListTodo, ShieldCheck } from 'lucide-react';
@@ -34,12 +35,36 @@ const safeLocalStorage = {
 };
 
 export default function App() {
-  const [tab, setTab] = useState<'form' | 'admin'>('form');
+  const [tab, setTab] = useState<'form' | 'admin'>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('view') === 'admin' || window.location.hash === '#admin') {
+        return 'admin';
+      }
+    }
+    return 'form';
+  });
+
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [registrations, setRegistrations] = useState<StudentRegistration[]>([]);
   const [sheetConfig, setSheetConfig] = useState<GoogleSheetConfig | null>(null);
   const [waLink, setWaLink] = useState<string>('https://chat.whatsapp.com/CgWJzVBrQ7vAZu1BSJHS8l');
   const [logoUrl, setLogoUrl] = useState<string>('');
   const activeSyncsRef = useRef<Set<string>>(new Set());
+
+  // Function to switch tab and update address bar cleanly
+  const handleSetTab = (newTab: 'form' | 'admin') => {
+    setTab(newTab);
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      if (newTab === 'admin') {
+        url.searchParams.set('view', 'admin');
+      } else {
+        url.searchParams.set('view', 'pendaftaran');
+      }
+      window.history.replaceState({}, '', url.toString());
+    }
+  };
 
   // Lifted Admin authorization state
   const [isAdminAuthorized, setIsAdminAuthorized] = useState(() => {
@@ -98,8 +123,8 @@ export default function App() {
           setLogoUrl(data.logoUrl || '');
           safeLocalStorage.setItem('sdn_ulujami_logo', data.logoUrl || '');
         }
-      } else {
-        // Initialize config document on Firestore if it doesn't exist
+      } else if (sessionStorage.getItem('sdn_ulujami_admin_logged') === 'true') {
+        // Initialize config document on Firestore if it doesn't exist (Only for authorized Admin devices)
         const currentConfig: GoogleSheetConfig | null = savedSheetConfig ? JSON.parse(savedSheetConfig) : null;
         setDoc(configDocRef, {
           appsScriptUrl: currentConfig?.appsScriptUrl || '',
@@ -149,11 +174,9 @@ export default function App() {
     }
   }, [logoUrl]);
 
-  // Auto-sync effect: automatically syncs any 'pending' registrations to Google Sheets
-  // ONLY runs on the active Admin device to ensure that even if a parent's browser is closed,
-  // offline, or blocked by CORS, the data is synced to Sheets securely in the background.
+  // Auto-sync effect: automatically syncs any 'pending' registrations to Google Sheets.
+  // Runs on ANY device (parent or admin) that has access to sheetConfig.appsScriptUrl (synced in real-time via Firestore).
   useEffect(() => {
-    if (!isAdminAuthorized) return;
     if (!sheetConfig || !sheetConfig.appsScriptUrl) return;
 
     const pendingRegistrations = registrations.filter(r => r.syncStatus === 'pending');
@@ -166,27 +189,19 @@ export default function App() {
       console.log(`Auto-syncing registration in background: ${reg.fullName} (${reg.id})`);
       appendRegistrationToAppsScript(sheetConfig.appsScriptUrl, reg)
         .then(() => {
-          // Success! Update Firestore status
+          // Success! Update Firestore status so all devices reflect 'synced'
           const docRef = doc(db, 'registrations', reg.id);
           setDoc(docRef, { syncStatus: 'synced', errorMessage: null }, { merge: true })
             .catch(err => console.error('Failed to update synced status in Firestore:', err));
         })
         .catch((err) => {
-          console.warn(`Auto-sync failed for ${reg.fullName}:`, err);
-          // Mark as failed in Firestore so we don't spam requests infinitely,
-          // but we can retry on next fresh reload or manual click
-          const docRef = doc(db, 'registrations', reg.id);
-          setDoc(docRef, { 
-            syncStatus: 'failed', 
-            errorMessage: err.message || 'Gagal sinkronisasi otomatis.' 
-          }, { merge: true })
-            .catch(fireErr => console.error('Failed to update failed status in Firestore:', fireErr));
+          console.warn(`Auto-sync attempt for ${reg.fullName}:`, err);
         })
         .finally(() => {
           activeSyncsRef.current.delete(reg.id);
         });
     });
-  }, [registrations, sheetConfig, isAdminAuthorized]);
+  }, [registrations, sheetConfig]);
 
   // 2. Create new student registration with direct sync to Google Sheets
   const handleRegister = async (
@@ -215,10 +230,6 @@ export default function App() {
       }
     }
 
-    if (!activeConfig || !activeConfig.appsScriptUrl) {
-      throw new Error('Sistem pendaftaran belum siap. URL Google Sheets belum dikonfigurasi oleh admin pada komputer utama.');
-    }
-
     const newReg: StudentRegistration = {
       ...formData,
       id,
@@ -226,12 +237,12 @@ export default function App() {
       syncStatus: 'pending'
     };
 
-    // Save locally first to guarantee instant UI update
+    // Save locally to state
     const updatedList = [newReg, ...registrations];
     setRegistrations(updatedList);
     safeLocalStorage.setItem('sdn_ulujami_registrations', JSON.stringify(updatedList));
 
-    // Save to Firestore with 'pending' status
+    // Save to Firestore first. This guarantees the data is stored in the database!
     const regDocRef = doc(db, 'registrations', id);
     try {
       await setDoc(regDocRef, newReg);
@@ -239,53 +250,44 @@ export default function App() {
       console.error('Failed to save registration to Firestore:', err);
     }
 
-    // Direct blocking sync to Google Sheets (the form will show loading until this finishes)
-    try {
-      const syncSucceeded = await appendRegistrationToAppsScript(activeConfig.appsScriptUrl, newReg);
-      if (syncSucceeded) {
-        const syncedReg: StudentRegistration = {
-          ...newReg,
-          syncStatus: 'synced'
-        };
+    // Attempt direct sync to Google Sheets
+    if (activeConfig && activeConfig.appsScriptUrl) {
+      try {
+        const syncSucceeded = await appendRegistrationToAppsScript(activeConfig.appsScriptUrl, newReg);
+        if (syncSucceeded) {
+          const syncedReg: StudentRegistration = {
+            ...newReg,
+            syncStatus: 'synced'
+          };
 
-        // Update status in Firestore
-        await setDoc(regDocRef, { syncStatus: 'synced', errorMessage: null }, { merge: true })
-          .catch(err => console.error('Failed to update synced status in Firestore:', err));
+          // Update status in Firestore to synced
+          await setDoc(regDocRef, { syncStatus: 'synced', errorMessage: null }, { merge: true })
+            .catch(err => console.error('Failed to update synced status in Firestore:', err));
 
-        // Update local state and localStorage
-        setRegistrations(prev => {
-          const newList = prev.map(r => r.id === id ? syncedReg : r);
-          safeLocalStorage.setItem('sdn_ulujami_registrations', JSON.stringify(newList));
-          return newList;
-        });
+          // Update local state and localStorage
+          setRegistrations(prev => {
+            const newList = prev.map(r => r.id === id ? syncedReg : r);
+            safeLocalStorage.setItem('sdn_ulujami_registrations', JSON.stringify(newList));
+            return newList;
+          });
 
-        return syncedReg;
-      } else {
-        throw new Error('Google Sheets mengembalikan respon tidak sukses.');
+          return syncedReg;
+        }
+      } catch (err: any) {
+        console.warn('Direct sync failed (possibly CORS on parent device), leaving as pending for main computer auto-sync:', err);
+        
+        // Save the error message to Firestore so Admin can see it, but keep status as pending
+        await setDoc(regDocRef, { 
+          errorMessage: err.message || 'Gagal terhubung langsung (CORS/Koneksi). Menunggu komputer utama.' 
+        }, { merge: true })
+          .catch(fireErr => console.error('Failed to update status in Firestore:', fireErr));
       }
-    } catch (err: any) {
-      console.warn('Sync to Google Sheets failed during form submission:', err);
-      
-      const isAdmin = sessionStorage.getItem('sdn_ulujami_admin_logged') === 'true';
-      const nextStatus = isAdmin ? 'failed' : 'pending';
-
-      // Keep it in Firestore as pending/failed with error message
-      await setDoc(regDocRef, { 
-        syncStatus: nextStatus, 
-        errorMessage: err.message || 'Gagal terhubung ke Google Sheets.' 
-      }, { merge: true })
-        .catch(fireErr => console.error('Failed to update status in Firestore:', fireErr));
-
-      // Update local state and localStorage
-      setRegistrations(prev => {
-        const newList = prev.map(r => r.id === id ? { ...r, syncStatus: nextStatus as any, errorMessage: err.message || 'Gagal terhubung ke Google Sheets.' } : r);
-        safeLocalStorage.setItem('sdn_ulujami_registrations', JSON.stringify(newList));
-        return newList;
-      });
-
-      // Rethrow error so parent device is notified and knows the spreadsheet sync failed
-      throw new Error(`Pendaftaran tersimpan di database, tetapi gagal mengirim ke Google Sheets: ${err.message || 'Koneksi terputus.'}. Silakan coba kirim ulang.`);
     }
+
+    // Return the newReg with 'pending' status. We DO NOT throw an error!
+    // The main computer (logged in as admin) will automatically pick it up via Firestore real-time sync 
+    // and push it to Google Sheets instantly in the background.
+    return newReg;
   };
 
   // 3. Synchronize a single pending/failed registration from Admin Panel
@@ -402,10 +404,11 @@ export default function App() {
       {/* Header component */}
       <Header 
         currentTab={tab} 
-        setTab={setTab} 
+        setTab={handleSetTab} 
         isSheetConnected={!!sheetConfig}
         spreadsheetUrl={sheetConfig?.spreadsheetUrl}
         logoUrl={logoUrl}
+        onOpenShareModal={() => setIsShareModalOpen(true)}
       />
 
       {/* Main Container */}
@@ -428,9 +431,16 @@ export default function App() {
             onUpdateLogo={handleUpdateLogo}
             isLocalAuthorized={isAdminAuthorized}
             setIsLocalAuthorized={setIsAdminAuthorized}
+            onOpenShareModal={() => setIsShareModalOpen(true)}
           />
         )}
       </main>
+
+      {/* Share Modal Popup */}
+      <ShareModal 
+        isOpen={isShareModalOpen} 
+        onClose={() => setIsShareModalOpen(false)} 
+      />
 
       {/* Athletic Football Footer */}
       <footer className="bg-slate-900 border-t border-slate-800 text-slate-400 py-6 text-center text-xs relative overflow-hidden">

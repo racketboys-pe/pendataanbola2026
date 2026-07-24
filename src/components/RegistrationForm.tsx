@@ -568,11 +568,11 @@ export default function RegistrationForm({ onRegister, waLink, registrations }: 
                   <div>
                     {displayReceipt?.syncStatus === 'synced' ? (
                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-100 text-emerald-800 rounded-full text-[10px] font-bold">
-                        <Check className="w-3 h-3" /> Terparkir (Synced)
+                        <Check className="w-3.5 h-3.5" /> Disinkronkan
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-100 text-amber-800 rounded-full text-[10px] font-bold" title="Data disimpan di penyimpanan lokal, admin akan mensinkronisasikan ke Google Sheets.">
-                        Disimpan Lokal (Pending)
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-100 text-amber-800 rounded-full text-[10px] font-bold animate-pulse" title="Tersimpan aman di database cloud. Menunggu komputer utama melakukan sinkronisasi otomatis ke Google Sheets.">
+                        Menunggu Sync Komputer Utama
                       </span>
                     )}
                   </div>

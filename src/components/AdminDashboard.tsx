@@ -4,7 +4,7 @@ import {
   FileSpreadsheet, ShieldAlert, CheckCircle, RefreshCw, Trash2, 
   Download, Search, Filter, Database, Link, AlertCircle, ArrowUpRight, 
   Activity, Users, UserCheck, Calendar, Sparkles, Check, LogOut, ArrowRight,
-  Lock, Key, ShieldCheck, Copy, Code, Trophy, Image, Upload
+  Lock, Key, ShieldCheck, Copy, Code, Trophy, Image, Upload, Share2, QrCode
 } from 'lucide-react';
 import { StudentRegistration, GoogleSheetConfig } from '../types';
 import { appendRegistrationToAppsScript, getAppsScriptCodeTemplate, validateAppsScriptUrl } from '../lib/sheets';
@@ -22,6 +22,7 @@ interface AdminDashboardProps {
   onUpdateLogo: (logo: string) => void;
   isLocalAuthorized: boolean;
   setIsLocalAuthorized: (authorized: boolean) => void;
+  onOpenShareModal?: () => void;
 }
 
 export default function AdminDashboard({
@@ -36,7 +37,8 @@ export default function AdminDashboard({
   logoUrl,
   onUpdateLogo,
   isLocalAuthorized,
-  setIsLocalAuthorized
+  setIsLocalAuthorized,
+  onOpenShareModal
 }: AdminDashboardProps) {
   const [loginId, setLoginId] = useState('');
   const [loginPass, setLoginPass] = useState('');
@@ -498,6 +500,40 @@ export default function AdminDashboard({
 
       </div>
 
+      {/* Public Link & QR Code Banner for Parents */}
+      <div className="bg-gradient-to-r from-emerald-800 via-emerald-700 to-emerald-900 rounded-3xl p-6 text-white shadow-xl border-2 border-yellow-400/40 relative overflow-hidden">
+        <div className="absolute right-0 top-0 bottom-0 opacity-10 pointer-events-none translate-x-8">
+          <QrCode className="w-64 h-64 text-white" />
+        </div>
+
+        <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
+          <div className="space-y-2 text-center md:text-left">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-yellow-400 text-emerald-950 font-black text-[10px] rounded-full uppercase tracking-wider shadow-sm">
+              <Sparkles className="w-3 h-3" />
+              Link Pendaftaran Publik
+            </div>
+            <h3 className="text-xl sm:text-2xl font-black uppercase tracking-tight">
+              Akses Formulir Khusus Wali Murid &amp; Publik
+            </h3>
+            <p className="text-xs sm:text-sm text-emerald-100 max-w-2xl leading-relaxed">
+              Bagikan link ini ke grup WhatsApp sekolah, cetak QR code, atau kirim langsung ke orang tua calon peserta ekskul agar mereka bisa mendaftar dari HP masing-masing.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-3 shrink-0">
+            {onOpenShareModal && (
+              <button
+                onClick={onOpenShareModal}
+                className="flex items-center gap-2 px-6 py-3.5 bg-yellow-400 hover:bg-yellow-300 text-emerald-950 rounded-2xl font-black text-xs uppercase tracking-wider transition-all shadow-lg hover:shadow-yellow-400/20 active:scale-95 cursor-pointer"
+              >
+                <Share2 className="w-4.5 h-4.5" />
+                <span>Bagikan Link &amp; QR Code</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* 2. Google Apps Script Web App Integration Module */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
@@ -530,6 +566,20 @@ export default function AdminDashboard({
                 <li>Klik <strong>Terapkan</strong>, setujui izin keamanan (pilih Advanced &gt; Go to ... (unsafe) &gt; Allow).</li>
                 <li>Salin <strong className="text-slate-800">URL Aplikasi Web</strong> yang dihasilkan, lalu masukkan pada kolom di bawah ini.</li>
               </ol>
+
+              {/* Crucial Multi-Device Notice */}
+              <div className="p-3 bg-amber-50 border-2 border-amber-300/80 rounded-xl space-y-1">
+                <div className="flex items-center gap-2 text-amber-900 font-bold text-xs">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>SANGAT PENTING AGAR DEVICE / HP LAIN BISA MENGIRIM DATA:</span>
+                </div>
+                <p className="text-[11px] text-amber-800 font-medium leading-relaxed">
+                  Pada langkah ke-7 di atas, pilihan <strong>"Akses / Who has access" MUST/HARUS diatur ke "Siapa saja / Anyone"</strong>. Jika diatur ke <em>"Hanya saya / Only me"</em>, maka HP/device wali murid akan diblokir oleh Google saat mengirim data!
+                </p>
+                <p className="text-[10px] text-amber-700 italic pt-0.5">
+                  💡 <strong>Sudah terlanjur Deploy?</strong> Buka editor Apps Script di Google Sheets Anda, klik <strong>Terapkan &gt; Kelola Penerapan (Manage Deployments)</strong>, klik ikon pensil Edit, ubah Akses ke <strong>Siapa saja (Anyone)</strong>, lalu klik <strong>Terapkan</strong>.
+                </p>
+              </div>
 
               {/* Code Copy Action */}
               <div className="pt-2">

@@ -7,6 +7,7 @@ export async function appendRegistrationToAppsScript(
   appsScriptUrl: string,
   registration: StudentRegistration
 ): Promise<boolean> {
+  const cleanUrl = appsScriptUrl.trim();
   const payload = {
     registeredAt: registration.registeredAt,
     id: registration.id,
@@ -23,7 +24,7 @@ export async function appendRegistrationToAppsScript(
 
   try {
     // Attempt standard POST request first (with credentials/CORS check if supported)
-    const response = await fetch(appsScriptUrl, {
+    const response = await fetch(cleanUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'text/plain;charset=utf-8'
@@ -58,7 +59,7 @@ export async function appendRegistrationToAppsScript(
       // Fallback: Send with mode: 'no-cors'
       // This allows the payload to successfully reach Google Apps Script and insert rows,
       // bypassing any strict browser CORS preflight / redirect blocks.
-      await fetch(appsScriptUrl, {
+      await fetch(cleanUrl, {
         method: 'POST',
         mode: 'no-cors',
         headers: {
